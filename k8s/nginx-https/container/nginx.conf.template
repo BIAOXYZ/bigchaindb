@@ -158,8 +158,8 @@ stream {
   # Enable logging when connections are being throttled.
   limit_conn_log_level notice;
   
-  # Allow 16 connections from the same IP address.
-  limit_conn two 16;
+  # Allow 64 connections from the same IP address.
+  limit_conn two 64;
     
   # DNS resolver to use for all the backend names specified in this configuration.
   resolver DNS_SERVER valid=30s ipv6=off;
@@ -172,7 +172,7 @@ stream {
   
   # Frontend server to forward connections to MDB instance.
   server {
-    listen MONGODB_FRONTEND_PORT so_keepalive=10m:1m:5;
+    listen MONGODB_FRONTEND_PORT so_keepalive=3m:1m:5;
     preread_timeout 30s;
     tcp_nodelay on;
     proxy_pass $mdb_backend:MONGODB_BACKEND_PORT;
