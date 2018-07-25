@@ -1,11 +1,15 @@
 """
-BigchainDB: A Scalable Blockchain Database
+BigchainDB: The Blockchain Database
 
 For full docs visit https://docs.bigchaindb.com
 
 """
 from setuptools import setup, find_packages
+import sys
 
+
+if sys.version_info < (3, 6):
+    sys.exit('Please use Python version 3.6 or higher.')
 
 # get the version
 version = {}
@@ -32,6 +36,7 @@ dev_require = [
     'ipython',
     'watchdog',
     'logging_tree',
+    'pre-commit'
 ]
 
 docs_require = [
@@ -40,6 +45,8 @@ docs_require = [
     'sphinx-rtd-theme>=0.1.9',
     'sphinxcontrib-httpdomain>=1.5.0',
     'sphinxcontrib-napoleon>=0.4.4',
+    'aafigure>=0.6',
+    'wget'
 ]
 
 tests_require = [
@@ -47,16 +54,16 @@ tests_require = [
     'pep8',
     'flake8',
     'flake8-quotes==0.8.1',
-    'hypothesis',
+    'hypothesis~=3.18.5',
     'hypothesis-regex',
     'pylint',
     'pytest>=3.0.0',
-    'pytest-catchlog>=1.2.2',
     'pytest-cov>=2.2.1',
     'pytest-mock',
     'pytest-xdist',
     'pytest-flask',
     'pytest-aiohttp',
+    'pytest-asyncio',
     'tox',
 ] + docs_require
 
@@ -66,8 +73,7 @@ benchmarks_require = [
 
 install_requires = [
     # TODO Consider not installing the db drivers, or putting them in extras.
-    'rethinkdb~=2.3',  # i.e. a version between 2.3 and 3.0
-    'pymongo~=3.4',
+    'pymongo~=3.6',
     'pysha3~=1.0.2',
     'cryptoconditions~=0.6.0.dev',
     'python-rapidjson==0.0.11',
@@ -77,34 +83,34 @@ install_requires = [
     'flask-restful~=0.3.0',
     'requests~=2.9',
     'gunicorn~=19.0',
-    'multipipes~=0.1.0',
     'jsonschema~=2.5.1',
     'pyyaml~=3.12',
-    'aiohttp~=2.0',
+    'aiohttp~=2.3',
     'python-rapidjson-schema==0.1.1',
-    'statsd==3.2.1',
+    'bigchaindb-abci==0.5.1',
+    'setproctitle~=1.1.0',
 ]
 
 setup(
     name='BigchainDB',
     version=version['__version__'],
-    description='BigchainDB: A Scalable Blockchain Database',
+    description='BigchainDB: The Blockchain Database',
     long_description=(
         "BigchainDB allows developers and enterprises to deploy blockchain "
-        "proof-of-concepts, platforms and applications with a scalable blockchain "
+        "proof-of-concepts, platforms and applications with a blockchain "
         "database. BigchainDB supports a wide range of industries and use cases "
         "from identity and intellectual property to supply chains, energy, IoT "
-        "and financial ecosystems. With high throughput, sub-second latency and "
-        "powerful functionality to automate business processes, BigchainDB looks, "
-        "acts and feels like a database but has the core blockchain "
-        "characteristics that enterprises want."
+        "and financial ecosystems. With high throughput, low latency, powerful "
+        "query functionality, decentralized control, immutable data storage and "
+        "built-in asset support, BigchainDB is like a database with blockchain "
+        "characteristics."
         ),
     url='https://github.com/BigchainDB/bigchaindb/',
     author='BigchainDB Contributors',
     author_email='dev@bigchaindb.com',
-    license='AGPLv3',
+    license='Apache Software License 2.0',
     zip_safe=False,
-
+    python_requires='>=3.6',
     classifiers=[
         'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
@@ -112,7 +118,7 @@ setup(
         'Topic :: Database :: Database Engines/Servers',
         'Topic :: Software Development',
         'Natural Language :: English',
-        'License :: OSI Approved :: GNU Affero General Public License v3',
+        'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3 :: Only',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',

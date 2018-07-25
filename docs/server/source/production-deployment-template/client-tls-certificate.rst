@@ -1,3 +1,5 @@
+.. _how-to-generate-a-client-certificate-for-mongodb:
+
 How to Generate a Client Certificate for MongoDB
 ================================================
 
@@ -17,7 +19,7 @@ First create a directory for the client certificate and cd into it:
 
    cd client-cert
 
-Then :ref:`install and configure Easy-RSA in that directory <How to Install & Configure Easy-RSA>`.
+Then :ref:`install and configure Easy-RSA in that directory <how-to-install-and-configure-easyrsa>`.
 
 
 Step 2: Create the Client Private Key and CSR
@@ -28,13 +30,13 @@ by going into the directory ``client-cert/easy-rsa-3.0.1/easyrsa3``
 and using:
 
 .. code:: bash
-        
+
    ./easyrsa init-pki
 
    ./easyrsa gen-req bdb-instance-0 nopass
 
 You should change the Common Name (e.g. ``bdb-instance-0``)
-to a value that reflects what the 
+to a value that reflects what the
 client certificate is being used for, e.g. ``mdb-mon-instance-3`` or ``mdb-bak-instance-4``. (The final integer is specific to your BigchainDB node in the BigchainDB cluster.)
 
 You will be prompted to enter the Distinguished Name (DN) information for this certificate. For each field, you can accept the default value [in brackets] by pressing Enter.
@@ -47,6 +49,10 @@ You will be prompted to enter the Distinguished Name (DN) information for this c
 
 Aside: The ``nopass`` option means "do not encrypt the private key (default is encrypted)". You can get help with the ``easyrsa`` command (and its subcommands)
 by using the subcommand ``./easyrsa help``.
+
+.. note::
+    For more information about requirements for MongoDB client certificates, please consult the `official MongoDB
+    documentation <https://docs.mongodb.com/manual/tutorial/configure-x509-client-authentication/>`_.
 
 
 Step 3: Get the Client Certificate Signed
@@ -62,15 +68,15 @@ to sign the request.
 
 If you are the admin of the managing organization's self-signed CA,
 then you can import the CSR and use Easy-RSA to sign it.
-Go to your ``bdb-cluster-ca/easy-rsa-3.0.1/easyrsa3/``
+Go to your ``bdb-node-ca/easy-rsa-3.0.1/easyrsa3/``
 directory and do something like:
 
 .. code:: bash
-        
+
    ./easyrsa import-req /path/to/bdb-instance-0.req bdb-instance-0
 
    ./easyrsa sign-req client bdb-instance-0
-        
+
 Once you have signed it, you can send the signed certificate
 and the CA certificate back to the requestor.
 The files are ``pki/issued/bdb-instance-0.crt`` and ``pki/ca.crt``.
@@ -79,9 +85,21 @@ The files are ``pki/issued/bdb-instance-0.crt`` and ``pki/ca.crt``.
 Step 4: Generate the Consolidated Client PEM File
 -------------------------------------------------
 
-MongoDB requires a single, consolidated file containing both the public and
-private keys.
+.. note::
+    This step can be skipped for BigchainDB client certificate as BigchainDB
+    uses the PyMongo driver, which accepts separate certificate and key files.
+
+MongoDB, MongoDB Backup Agent and MongoDB Monitoring Agent require a single,
+consolidated file containing both the public and private keys.
 
 .. code:: bash
-        
+
    cat /path/to/bdb-instance-0.crt /path/to/bdb-instance-0.key > bdb-instance-0.pem
+
+    OR
+
+   cat /path/to/mdb-mon-instance-0.crt /path/to/mdb-mon-instance-0.key > mdb-mon-instance-0.pem
+
+    OR
+
+   cat /path/to/mdb-bak-instance-0.crt /path/to/mdb-bak-instance-0.key > mdb-bak-instance-0.pem

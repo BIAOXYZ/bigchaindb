@@ -1,40 +1,40 @@
 apiVersion: extensions/v1beta1
 kind: Deployment
 metadata:
-  name: ngx-http-instance-0-dep
+  name: ngx-instance-0-dep
 spec:
   replicas: 1
   template:
     metadata:
       labels:
-        app: ngx-http-instance-0-dep
+        app: ngx-instance-0-dep
     spec:
       terminationGracePeriodSeconds: 10
       containers:
-      - name: nginx-http
-        image: bigchaindb/nginx_http:1.0
-        imagePullPolicy: IfNotPresent
+      - name: nginx
+        image: bigchaindb/nginx_http:2.0.0-alpha5
+        imagePullPolicy: Always
         env:
-        - name: CLUSTER_FRONTEND_PORT
+        - name: NODE_FRONTEND_PORT
           valueFrom:
             configMapKeyRef:
               name: vars
-              key: cluster-frontend-port
+              key: node-frontend-port
         - name: HEALTH_CHECK_PORT
           valueFrom:
             configMapKeyRef:
               name: vars
-              key: cluster-health-check-port
+              key: node-health-check-port
         - name: DNS_SERVER
           valueFrom:
             configMapKeyRef:
               name: vars
-              key: cluster-dns-server-ip
+              key: node-dns-server-ip
         - name: MONGODB_FRONTEND_PORT
           valueFrom:
             configMapKeyRef:
               name: vars
-              key: mongodb-frontend-port
+              key: mongodb-backend-port
         - name: MONGODB_BACKEND_HOST
           valueFrom:
             configMapKeyRef:
@@ -60,14 +60,28 @@ spec:
             configMapKeyRef:
               name: vars
               key: bigchaindb-ws-port
+        - name: TM_PUB_KEY_ACCESS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: tendermint-config
+              key: bdb-pub-key-access
+        - name: TM_P2P_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: tendermint-config
+              key: bdb-p2p-port
         ports:
-        - containerPort: "<mongodb-frontend-port from ConfigMap>"
-          protocol: TCP
-        - containerPort: "<cluster-health-check-port from ConfigMap>"
+        - containerPort: 8888
           protocol: TCP
           name: ngx-health
-        - containerPort: "<cluster-frontend-port from ConfigMap>"
+        - containerPort: 80
           protocol: TCP
+        - containerPort: 9986
+          protocol: TCP
+          name: bdb-pub-key
+        - containerPort: 26656
+          protocol: TCP
+          name: bdb-p2p-port
         livenessProbe:
           httpGet:
             path: /health

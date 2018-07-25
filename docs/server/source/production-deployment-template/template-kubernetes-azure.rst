@@ -6,6 +6,8 @@ cluster.
 This page describes one way to deploy a Kubernetes cluster on Azure.
 
 
+.. _get-a-pay-as-you-go-azure-subscription:
+
 Step 1: Get a Pay-As-You-Go Azure Subscription
 ----------------------------------------------
 
@@ -18,6 +20,8 @@ You may find that you have to sign up for a Free Trial subscription first.
 That's okay: you can have many subscriptions.
 
 
+.. _create-an-ssh-key-pair:
+
 Step 2: Create an SSH Key Pair
 ------------------------------
 
@@ -28,7 +32,8 @@ but it's probably a good idea to make a new SSH key pair
 for your Kubernetes VMs and nothing else.)
 
 See the
-:ref:`page about how to generate a key pair for SSH <Generate a Key Pair for SSH>`.
+:doc:`page about how to generate a key pair for SSH
+<../appendices/generate-key-pair-for-ssh>`.
 
 
 Step 3: Deploy an Azure Container Service (ACS)
@@ -49,7 +54,7 @@ If you already *have* the Azure CLI installed, you may want to update it.
 
 .. warning::
 
-   ``az component update`` isn't supported if you installed the CLI using some of Microsoft's provided installation instructions. See `the Microsoft docs for update instructions <https://docs.microsoft.com/en-us/cli/azure/install-az-cli2>`_. 
+   ``az component update`` isn't supported if you installed the CLI using some of Microsoft's provided installation instructions. See `the Microsoft docs for update instructions <https://docs.microsoft.com/en-us/cli/azure/install-az-cli2>`_.
 
 
 Next, login to your account using:
@@ -97,20 +102,24 @@ Finally, you can deploy an ACS using something like:
    $ az acs create --name <a made-up cluster name> \
    --resource-group <name of resource group created earlier> \
    --master-count 3 \
-   --agent-count 2 \
+   --agent-count 3 \
    --admin-username ubuntu \
-   --agent-vm-size Standard_D2_v2 \
+   --agent-vm-size Standard_L4s \
    --dns-prefix <make up a name> \
    --ssh-key-value ~/.ssh/<name>.pub \
    --orchestrator-type kubernetes \
    --debug --output json
 
+.. Note::
+    The `Azure documentation <https://docs.microsoft.com/en-us/cli/azure/acs?view=azure-cli-latest#az_acs_create>`_
+    has a list of all ``az acs create`` options.
+    You might prefer a smaller agent VM size, for example.
+    You can also get a list of the options using:
 
-There are more options. For help understanding all the options, use the built-in help:
+    .. code:: bash
 
-.. code:: bash
+       $ az acs create --help
 
-   $ az acs create --help
 
 It takes a few minutes for all the resources to deploy.
 You can watch the progress in the `Azure Portal
@@ -120,6 +129,45 @@ and click on the one you created
 to see all the resources in it.
 
 
+Trouble with the Service Principal? Then Read This!
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If the ``az acs create`` command fails with an error message including the text,
+"The Service Principal in ServicePrincipalProfile could not be validated",
+then we found you can prevent that by creating a Service Principal ahead of time
+and telling ``az acs create`` to use that one. (It's supposed to create one,
+but sometimes that fails, I guess.)
+
+Create a new resource group, even if you created one before. They're free anyway:
+
+.. code:: bash
+
+   $ az login
+   $ az group create --name <new resource group name> \
+                     --location <Azure region like westeurope>
+
+Note the ``id`` in the output. It looks like
+``"/subscriptions/369284be-0104-421a-8488-1aeac0caecbb/resourceGroups/examplerg"``.
+It can be copied into the next command.
+Create a Service Principal using:
+
+.. code:: bash
+
+   $ az ad sp create-for-rbac --role="Contributor" \
+   --scopes=<id value copied from above, including the double quotes on the ends>
+
+Note the ``appId`` and ``password``.
+Put those in a new ``az acs create`` command like above, with two new options added:
+
+.. code:: bash
+
+   $ az acs create ... \
+   --service-principal <appId> \
+   --client-secret <password>
+
+
+.. _ssh-to-your-new-kubernetes-cluster-nodes:
+
 Optional: SSH to Your New Kubernetes Cluster Nodes
 --------------------------------------------------
 
@@ -128,9 +176,9 @@ You can SSH to one of the just-deployed Kubernetes "master" nodes
 
 .. code:: bash
 
-   $ ssh -i ~/.ssh/<name> ubuntu@<master-ip-address-or-hostname>
+   $ ssh -i ~/.ssh/<name> ubuntu@<master-ip-address-or-fqdn>
 
-where you can get the IP address or hostname
+where you can get the IP address or FQDN
 of a master node from the Azure Portal. For example:
 
 .. code:: bash
@@ -139,13 +187,14 @@ of a master node from the Azure Portal. For example:
 
 .. note::
 
-   All the master nodes should have the *same* public IP address and hostname
-   (also called the Master FQDN).
+   All the master nodes are accessible behind the *same* public IP address and
+   FQDN. You connect to one of the masters randomly based on the load balancing
+   policy.
 
-The "agent" nodes shouldn't get public IP addresses or hostnames,
-so you can't SSH to them *directly*,
+The "agent" nodes shouldn't get public IP addresses or externally accessible
+FQDNs, so you can't SSH to them *directly*,
 but you can first SSH to the master
-and then SSH to an agent from there.
+and then SSH to an agent from there using their hostname.
 To do that, you could
 copy your SSH key pair to the master (a bad idea),
 or use SSH agent forwarding (better).
@@ -168,14 +217,14 @@ then SSH agent forwarding hasn't been set up correctly.
 If you get a non-empty response,
 then SSH agent forwarding should work fine
 and you can SSH to one of the agent nodes (from a master)
-using something like:
+using:
 
 .. code:: bash
 
    $ ssh ubuntu@k8s-agent-4AC80E97-0
 
 where ``k8s-agent-4AC80E97-0`` is the name
-of a Kubernetes agent node in your Kubernetes cluster. 
+of a Kubernetes agent node in your Kubernetes cluster.
 You will have to replace it by the name
 of an agent node in your cluster.
 
@@ -201,5 +250,5 @@ CAUTION: You might end up deleting resources other than the ACS cluster.
    --name <name of resource group containing the cluster>
 
 
-Next, you can :doc:`run a BigchainDB node on your new
-Kubernetes cluster <node-on-kubernetes>`.
+Next, you can :doc:`run a BigchainDB node/cluster(BFT) <node-on-kubernetes>`
+on your new Kubernetes cluster.

@@ -1,3 +1,5 @@
+.. _how-to-generate-a-server-certificate-for-mongodb:
+
 How to Generate a Server Certificate for MongoDB
 ================================================
 
@@ -19,7 +21,7 @@ First create a directory for the server certificate (member cert) and cd into it
 
    cd member-cert
 
-Then :ref:`install and configure Easy-RSA in that directory <How to Install & Configure Easy-RSA>`.
+Then :ref:`install and configure Easy-RSA in that directory <how-to-install-and-configure-easyrsa>`.
 
 
 Step 2: Create the Server Private Key and CSR
@@ -29,8 +31,13 @@ You can create the server private key and certificate signing request (CSR)
 by going into the directory ``member-cert/easy-rsa-3.0.1/easyrsa3``
 and using something like:
 
+.. note::
+
+    Please make sure you are fullfilling the requirements for `MongoDB server/member certificates
+    <https://docs.mongodb.com/manual/tutorial/configure-x509-member-authentication>`_.
+
 .. code:: bash
-        
+
    ./easyrsa init-pki
 
    ./easyrsa --req-cn=mdb-instance-0 --subject-alt-name=DNS:localhost,DNS:mdb-instance-0 gen-req mdb-instance-0 nopass
@@ -63,15 +70,15 @@ to sign the request.
 
 If you are the admin of the managing organization's self-signed CA,
 then you can import the CSR and use Easy-RSA to sign it.
-Go to your ``bdb-cluster-ca/easy-rsa-3.0.1/easyrsa3/``
+Go to your ``bdb-node-ca/easy-rsa-3.0.1/easyrsa3/``
 directory and do something like:
 
 .. code:: bash
-        
+
    ./easyrsa import-req /path/to/mdb-instance-0.req mdb-instance-0
 
    ./easyrsa --subject-alt-name=DNS:localhost,DNS:mdb-instance-0 sign-req server mdb-instance-0
-        
+
 Once you have signed it, you can send the signed certificate
 and the CA certificate back to the requestor.
 The files are ``pki/issued/mdb-instance-0.crt`` and ``pki/ca.crt``.
@@ -84,6 +91,6 @@ MongoDB requires a single, consolidated file containing both the public and
 private keys.
 
 .. code:: bash
-        
+
    cat /path/to/mdb-instance-0.crt /path/to/mdb-instance-0.key > mdb-instance-0.pem
 

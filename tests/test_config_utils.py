@@ -26,28 +26,24 @@ def test_bigchain_instance_is_initialized_when_conf_provided(request):
     from bigchaindb import config_utils
     assert 'CONFIGURED' not in bigchaindb.config
 
-    config_utils.set_config({'keypair': {'public': 'a', 'private': 'b'}})
+    config_utils.set_config({'database': {'backend': 'a'}})
 
     assert bigchaindb.config['CONFIGURED'] is True
-
-    b = bigchaindb.Bigchain()
-
-    assert b.me
-    assert b.me_private
 
 
 def test_bigchain_instance_raises_when_not_configured(request, monkeypatch):
     import bigchaindb
     from bigchaindb import config_utils
     from bigchaindb.common import exceptions
+    from bigchaindb import BigchainDB
     assert 'CONFIGURED' not in bigchaindb.config
 
     # We need to disable ``bigchaindb.config_utils.autoconfigure`` to avoid reading
     # from existing configurations
     monkeypatch.setattr(config_utils, 'autoconfigure', lambda: 0)
 
-    with pytest.raises(exceptions.KeypairNotFoundException):
-        bigchaindb.Bigchain()
+    with pytest.raises(exceptions.ConfigurationError):
+        BigchainDB()
 
 
 def test_load_consensus_plugin_loads_default_rules_without_name():
@@ -72,12 +68,22 @@ def test_load_consensus_plugin_raises_with_invalid_subclass(monkeypatch):
     import time
     monkeypatch.setattr(config_utils,
                         'iter_entry_points',
-                        lambda *args: [type('entry_point', (object), {'load': lambda: object})])
+                        lambda *args: [type('entry_point', (object, ), {'load': lambda: object})])
 
     with pytest.raises(TypeError):
         # Since the function is decorated with `lru_cache`, we need to
         # "miss" the cache using a name that has not been used previously
         config_utils.load_consensus_plugin(str(time.time()))
+
+
+def test_load_events_plugins(monkeypatch):
+    from bigchaindb import config_utils
+    monkeypatch.setattr(config_utils,
+                        'iter_entry_points',
+                        lambda *args: [type('entry_point', (object, ), {'load': lambda: object})])
+
+    plugins = config_utils.load_events_plugins(['one', 'two'])
+    assert len(plugins) == 2
 
 
 def test_map_leafs_iterator():
@@ -140,7 +146,7 @@ def test_env_config(monkeypatch):
     assert result == expected
 
 
-def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_dir):
+def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, ssl_context):
     # constants
     DATABASE_HOST = 'test-host'
     DATABASE_NAME = 'test-dbname'
@@ -150,6 +156,9 @@ def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_d
     WSSERVER_SCHEME = 'ws'
     WSSERVER_HOST = '1.2.3.4'
     WSSERVER_PORT = 57
+    WSSERVER_ADVERTISED_SCHEME = 'wss'
+    WSSERVER_ADVERTISED_HOST = 'a.b.c.d'
+    WSSERVER_ADVERTISED_PORT = 89
     KEYRING = 'pubkey_0:pubkey_1:pubkey_2'
     LOG_FILE = '/somewhere/something.log'
 
@@ -157,7 +166,6 @@ def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_d
         'database': {
             'host': DATABASE_HOST
         },
-        'backlog_reassign_delay': 5,
         'log': {
             'level_console': 'debug',
         },
@@ -173,12 +181,15 @@ def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_d
                                            'BIGCHAINDB_WSSERVER_SCHEME': WSSERVER_SCHEME,
                                            'BIGCHAINDB_WSSERVER_HOST': WSSERVER_HOST,
                                            'BIGCHAINDB_WSSERVER_PORT': WSSERVER_PORT,
+                                           'BIGCHAINDB_WSSERVER_ADVERTISED_SCHEME': WSSERVER_ADVERTISED_SCHEME,
+                                           'BIGCHAINDB_WSSERVER_ADVERTISED_HOST': WSSERVER_ADVERTISED_HOST,
+                                           'BIGCHAINDB_WSSERVER_ADVERTISED_PORT': WSSERVER_ADVERTISED_PORT,
                                            'BIGCHAINDB_KEYRING': KEYRING,
                                            'BIGCHAINDB_LOG_FILE': LOG_FILE,
-                                           'BIGCHAINDB_DATABASE_CA_CERT': certs_dir + '/ca.crt',
-                                           'BIGCHAINDB_DATABASE_CRLFILE': certs_dir + '/crl.pem',
-                                           'BIGCHAINDB_DATABASE_CERTFILE': certs_dir + '/test_bdb_ssl.crt',
-                                           'BIGCHAINDB_DATABASE_KEYFILE': certs_dir + '/test_bdb_ssl.key',
+                                           'BIGCHAINDB_DATABASE_CA_CERT': ssl_context.ca,
+                                           'BIGCHAINDB_DATABASE_CRLFILE': ssl_context.crl,
+                                           'BIGCHAINDB_DATABASE_CERTFILE': ssl_context.cert,
+                                           'BIGCHAINDB_DATABASE_KEYFILE': ssl_context.key,
                                            'BIGCHAINDB_DATABASE_KEYFILE_PASSPHRASE': None})
     else:
         monkeypatch.setattr('os.environ', {'BIGCHAINDB_DATABASE_NAME': DATABASE_NAME,
@@ -188,6 +199,9 @@ def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_d
                                            'BIGCHAINDB_WSSERVER_SCHEME': WSSERVER_SCHEME,
                                            'BIGCHAINDB_WSSERVER_HOST': WSSERVER_HOST,
                                            'BIGCHAINDB_WSSERVER_PORT': WSSERVER_PORT,
+                                           'BIGCHAINDB_WSSERVER_ADVERTISED_SCHEME': WSSERVER_ADVERTISED_SCHEME,
+                                           'BIGCHAINDB_WSSERVER_ADVERTISED_HOST': WSSERVER_ADVERTISED_HOST,
+                                           'BIGCHAINDB_WSSERVER_ADVERTISED_PORT': WSSERVER_ADVERTISED_PORT,
                                            'BIGCHAINDB_KEYRING': KEYRING,
                                            'BIGCHAINDB_LOG_FILE': LOG_FILE})
 
@@ -195,15 +209,6 @@ def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_d
     from bigchaindb import config_utils
     from bigchaindb.log.configs import SUBSCRIBER_LOGGING_CONFIG as log_config
     config_utils.autoconfigure()
-
-    database_rethinkdb = {
-        'backend': 'rethinkdb',
-        'host': DATABASE_HOST,
-        'port': DATABASE_PORT,
-        'name': DATABASE_NAME,
-        'connection_timeout': 5000,
-        'max_tries': 3
-    }
 
     database_mongodb = {
         'backend': 'mongodb',
@@ -234,18 +239,16 @@ def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_d
         'ssl': True,
         'login': None,
         'password': None,
-        'ca_cert': certs_dir + '/ca.crt',
-        'crlfile': certs_dir + '/crl.pem',
-        'certfile': certs_dir + '/test_bdb_ssl.crt',
-        'keyfile': certs_dir + '/test_bdb_ssl.key',
+        'ca_cert': ssl_context.ca,
+        'crlfile': ssl_context.crl,
+        'certfile': ssl_context.cert,
+        'keyfile': ssl_context.key,
         'keyfile_passphrase': None
     }
 
     database = {}
     if DATABASE_BACKEND == 'mongodb':
         database = database_mongodb
-    elif DATABASE_BACKEND == 'rethinkdb':
-        database = database_rethinkdb
     elif DATABASE_BACKEND == 'mongodb-ssl':
         database = database_mongodb_ssl
 
@@ -261,14 +264,15 @@ def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_d
             'scheme': WSSERVER_SCHEME,
             'host': WSSERVER_HOST,
             'port': WSSERVER_PORT,
+            'advertised_scheme': WSSERVER_ADVERTISED_SCHEME,
+            'advertised_host': WSSERVER_ADVERTISED_HOST,
+            'advertised_port': WSSERVER_ADVERTISED_PORT,
         },
         'database': database,
-        'keypair': {
-            'public': None,
-            'private': None,
+        'tendermint': {
+            'host': None,
+            'port': None,
         },
-        'keyring': KEYRING.split(':'),
-        'backlog_reassign_delay': 5,
         'log': {
             'file': LOG_FILE,
             'error_file': log_config['handlers']['errors']['filename'],
@@ -280,8 +284,8 @@ def test_autoconfigure_read_both_from_file_and_env(monkeypatch, request, certs_d
             'fmt_console': log_config['formatters']['console']['format'],
             'fmt_logfile': log_config['formatters']['file']['format'],
             'granular_levels': {},
+            'port': 9020
         },
-        'graphite': {'host': 'localhost'},
     }
 
 

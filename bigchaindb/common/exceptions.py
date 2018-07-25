@@ -23,13 +23,10 @@ class CyclicBlockchainError(BigchainDBError):
     """Raised when there is a cycle in the blockchain"""
 
 
-class KeypairNotFoundException(BigchainDBError):
-    """Raised if operation cannot proceed because the keypair was not given"""
-
-
 class KeypairMismatchException(BigchainDBError):
     """Raised if the private key(s) provided for signing don't match any of the
-    current owner(s)"""
+    current owner(s)
+    """
 
 
 class OperationError(BigchainDBError):
@@ -55,7 +52,8 @@ class DoubleSpend(ValidationError):
 
 class InvalidHash(ValidationError):
     """Raised if there was an error checking the hash for a particular
-    operation"""
+    operation
+    """
 
 
 class SchemaValidationError(ValidationError):
@@ -64,20 +62,14 @@ class SchemaValidationError(ValidationError):
 
 class InvalidSignature(ValidationError):
     """Raised if there was an error checking the signature for a particular
-    operation"""
-
-
-class ImproperVoteError(ValidationError):
-    """Raised if a vote is not constructed correctly, or signed incorrectly"""
-
-
-class MultipleVotesError(ValidationError):
-    """Raised if a voter has voted more than once"""
+    operation
+    """
 
 
 class TransactionNotInValidBlock(ValidationError):
     """Raised when a transfer transaction is attempting to fulfill the
-    outputs of a transaction that is in an invalid or undecided block"""
+    outputs of a transaction that is in an invalid or undecided block
+    """
 
 
 class AssetIdMismatch(ValidationError):
@@ -96,10 +88,6 @@ class TransactionOwnerError(ValidationError):
     """Raised if a user tries to transfer a transaction they don't own"""
 
 
-class SybilError(ValidationError):
-    """If a block or vote comes from an unidentifiable node"""
-
-
 class DuplicateTransaction(ValidationError):
     """Raised if a duplicated transaction is found"""
 
@@ -110,3 +98,7 @@ class ThresholdTooDeep(ValidationError):
 
 class GenesisBlockAlreadyExistsError(ValidationError):
     """Raised when trying to create the already existing genesis block"""
+
+
+class MultipleValidatorOperationError(ValidationError):
+    """Raised when a validator update pending but new request is submited"""

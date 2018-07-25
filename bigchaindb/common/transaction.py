@@ -1,7 +1,12 @@
 """Transaction related models to parse and construct transaction
 payloads.
 
+Attributes:
+    UnspentOutput (namedtuple): Object holding the information
+        representing an unspent output.
+
 """
+from collections import namedtuple
 from copy import deepcopy
 from functools import reduce
 
@@ -9,6 +14,7 @@ import base58
 from cryptoconditions import Fulfillment, ThresholdSha256, Ed25519Sha256
 from cryptoconditions.exceptions import (
     ParsingError, ASN1DecodeError, ASN1EncodeError, UnsupportedTypeError)
+from sha3 import sha3_256
 
 from bigchaindb.common.crypto import PrivateKey, hash_data
 from bigchaindb.common.exceptions import (KeypairMismatchException,
@@ -16,6 +22,19 @@ from bigchaindb.common.exceptions import (KeypairMismatchException,
                                           AmountError, AssetIdMismatch,
                                           ThresholdTooDeep)
 from bigchaindb.common.utils import serialize
+
+
+UnspentOutput = namedtuple(
+    'UnspentOutput', (
+        # TODO 'utxo_hash': sha3_256(f'{txid}{output_index}'.encode())
+        # 'utxo_hash',   # noqa
+        'transaction_id',
+        'output_index',
+        'amount',
+        'asset_id',
+        'condition_uri',
+    )
+)
 
 
 class Input(object):
@@ -112,7 +131,7 @@ class Input(object):
                 InvalidSignature: If an Input's URI couldn't be parsed.
         """
         fulfillment = data['fulfillment']
-        if not isinstance(fulfillment, Fulfillment):
+        if not isinstance(fulfillment, (Fulfillment, type(None))):
             try:
                 fulfillment = Fulfillment.from_uri(data['fulfillment'])
             except ASN1DecodeError:
@@ -128,8 +147,7 @@ class Input(object):
 
 
 def _fulfillment_to_details(fulfillment):
-    """
-    Encode a fulfillment as a details dictionary
+    """Encode a fulfillment as a details dictionary
 
     Args:
         fulfillment: Crypto-conditions Fulfillment object
@@ -156,8 +174,7 @@ def _fulfillment_to_details(fulfillment):
 
 
 def _fulfillment_from_details(data, _depth=0):
-    """
-    Load a fulfillment for a signing spec dictionary
+    """Load a fulfillment for a signing spec dictionary
 
     Args:
         data: tx.output[].condition.details dictionary
@@ -463,22 +480,22 @@ class Transaction(object):
                 spend.
             outputs (:obj:`list` of :class:`~bigchaindb.common.
                 transaction.Output`, optional): Define the assets to lock.
-            asset (dict): Asset payload for this Transaction. ``CREATE`` and
-                ``GENESIS`` Transactions require a dict with a ``data``
+            asset (dict): Asset payload for this Transaction. ``CREATE``
+                Transactions require a dict with a ``data``
                 property while ``TRANSFER`` Transactions require a dict with a
                 ``id`` property.
             metadata (dict):
                 Metadata to be stored along with the Transaction.
             version (string): Defines the version number of a Transaction.
     """
+
     CREATE = 'CREATE'
     TRANSFER = 'TRANSFER'
-    GENESIS = 'GENESIS'
-    ALLOWED_OPERATIONS = (CREATE, TRANSFER, GENESIS)
-    VERSION = '1.0'
+    ALLOWED_OPERATIONS = (CREATE, TRANSFER)
+    VERSION = '2.0'
 
     def __init__(self, operation, asset, inputs=None, outputs=None,
-                 metadata=None, version=None):
+                 metadata=None, version=None, hash_id=None):
         """The constructor allows to create a customizable Transaction.
 
             Note:
@@ -496,16 +513,17 @@ class Transaction(object):
                 metadata (dict): Metadata to be stored along with the
                     Transaction.
                 version (string): Defines the version number of a Transaction.
+                hash_id (string): Hash id of the transaction.
         """
         if operation not in Transaction.ALLOWED_OPERATIONS:
             allowed_ops = ', '.join(self.__class__.ALLOWED_OPERATIONS)
             raise ValueError('`operation` must be one of {}'
                              .format(allowed_ops))
 
-        # Asset payloads for 'CREATE' and 'GENESIS' operations must be None or
+        # Asset payloads for 'CREATE' operations must be None or
         # dicts holding a `data` property. Asset payloads for 'TRANSFER'
         # operations must be dicts holding an `id` property.
-        if (operation in [Transaction.CREATE, Transaction.GENESIS] and
+        if (operation == Transaction.CREATE and
                 asset is not None and not (isinstance(asset, dict) and 'data' in asset)):
             raise TypeError(('`asset` must be None or a dict holding a `data` '
                              " property instance for '{}' Transactions".format(operation)))
@@ -529,6 +547,43 @@ class Transaction(object):
         self.inputs = inputs or []
         self.outputs = outputs or []
         self.metadata = metadata
+        self._id = hash_id
+
+    @property
+    def unspent_outputs(self):
+        """UnspentOutput: The outputs of this transaction, in a data
+        structure containing relevant information for storing them in
+        a UTXO set, and performing validation.
+        """
+        if self.operation == Transaction.CREATE:
+            self._asset_id = self._id
+        elif self.operation == Transaction.TRANSFER:
+            self._asset_id = self.asset['id']
+        return (UnspentOutput(
+            transaction_id=self._id,
+            output_index=output_index,
+            amount=output.amount,
+            asset_id=self._asset_id,
+            condition_uri=output.fulfillment.condition_uri,
+        ) for output_index, output in enumerate(self.outputs))
+
+    @property
+    def spent_outputs(self):
+        """tuple of :obj:`dict`: Inputs of this transaction. Each input
+        is represented as a dictionary containing a transaction id and
+        output index.
+        """
+        return (
+            input_.fulfills.to_dict()
+            for input_ in self.inputs if input_.fulfills
+        )
+
+    @property
+    def serialized(self):
+        return Transaction._to_str(self.to_dict())
+
+    def _hash(self):
+        self._id = hash_data(self.serialized)
 
     @classmethod
     def create(cls, tx_signers, recipients, metadata=None, asset=None):
@@ -757,6 +812,9 @@ class Transaction(object):
         tx_serialized = Transaction._to_str(tx_dict)
         for i, input_ in enumerate(self.inputs):
             self.inputs[i] = self._sign_input(input_, tx_serialized, key_pairs)
+
+        self._hash()
+
         return self
 
     @classmethod
@@ -801,13 +859,16 @@ class Transaction(object):
         #       this should never happen, but then again, never say never.
         input_ = deepcopy(input_)
         public_key = input_.owners_before[0]
+        message = sha3_256(message.encode())
+        if input_.fulfills:
+            message.update('{}{}'.format(
+                input_.fulfills.txid, input_.fulfills.output).encode())
+
         try:
             # cryptoconditions makes no assumptions of the encoding of the
             # message to sign or verify. It only accepts bytestrings
             input_.fulfillment.sign(
-                message.encode(),
-                base58.b58decode(key_pairs[public_key].encode()),
-            )
+                message.digest(), base58.b58decode(key_pairs[public_key].encode()))
         except KeyError:
             raise KeypairMismatchException('Public key {} is not a pair to '
                                            'any of the private keys'
@@ -825,6 +886,11 @@ class Transaction(object):
                 key_pairs (dict): The keys to sign the Transaction with.
         """
         input_ = deepcopy(input_)
+        message = sha3_256(message.encode())
+        if input_.fulfills:
+            message.update('{}{}'.format(
+                input_.fulfills.txid, input_.fulfills.output).encode())
+
         for owner_before in set(input_.owners_before):
             # TODO: CC should throw a KeypairMismatchException, instead of
             #       our manual mapping here
@@ -852,7 +918,8 @@ class Transaction(object):
             # cryptoconditions makes no assumptions of the encoding of the
             # message to sign or verify. It only accepts bytestrings
             for subffill in subffills:
-                subffill.sign(message.encode(), base58.b58decode(private_key.encode()))
+                subffill.sign(
+                    message.digest(), base58.b58decode(private_key.encode()))
         return input_
 
     def inputs_valid(self, outputs=None):
@@ -860,7 +927,7 @@ class Transaction(object):
         Outputs.
 
             Note:
-                Given a `CREATE` or `GENESIS` Transaction is passed,
+                Given a `CREATE` Transaction is passed,
                 dummy values for Outputs are submitted for validation that
                 evaluate parts of the validation-checks to `True`.
 
@@ -872,7 +939,7 @@ class Transaction(object):
             Returns:
                 bool: If all Inputs are valid.
         """
-        if self.operation in (Transaction.CREATE, Transaction.GENESIS):
+        if self.operation == Transaction.CREATE:
             # NOTE: Since in the case of a `CREATE`-transaction we do not have
             #       to check for outputs, we're just submitting dummy
             #       values to the actual method. This simplifies it's logic
@@ -908,10 +975,11 @@ class Transaction(object):
 
         tx_dict = self.to_dict()
         tx_dict = Transaction._remove_signatures(tx_dict)
+        tx_dict['id'] = None
         tx_serialized = Transaction._to_str(tx_dict)
 
         def validate(i, output_condition_uri=None):
-            """ Validate input against output condition URI """
+            """Validate input against output condition URI"""
             return self._input_valid(self.inputs[i], self.operation,
                                      tx_serialized, output_condition_uri)
 
@@ -919,19 +987,18 @@ class Transaction(object):
                    for i, cond in enumerate(output_condition_uris))
 
     @staticmethod
-    def _input_valid(input_, operation, tx_serialized, output_condition_uri=None):
+    def _input_valid(input_, operation, message, output_condition_uri=None):
         """Validates a single Input against a single Output.
 
             Note:
-                In case of a `CREATE` or `GENESIS` Transaction, this method
+                In case of a `CREATE` Transaction, this method
                 does not validate against `output_condition_uri`.
 
             Args:
                 input_ (:class:`~bigchaindb.common.transaction.
                     Input`) The Input to be signed.
                 operation (str): The type of Transaction.
-                tx_serialized (str): The Transaction used as a message when
-                    initially signing it.
+                message (str): The fulfillment message.
                 output_condition_uri (str, optional): An Output to check the
                     Input against.
 
@@ -945,19 +1012,24 @@ class Transaction(object):
                 ParsingError, ASN1DecodeError, ASN1EncodeError):
             return False
 
-        if operation in (Transaction.CREATE, Transaction.GENESIS):
-            # NOTE: In the case of a `CREATE` or `GENESIS` transaction, the
+        if operation == Transaction.CREATE:
+            # NOTE: In the case of a `CREATE` transaction, the
             #       output is always valid.
             output_valid = True
         else:
             output_valid = output_condition_uri == ccffill.condition_uri
+
+        message = sha3_256(message.encode())
+        if input_.fulfills:
+            message.update('{}{}'.format(
+                input_.fulfills.txid, input_.fulfills.output).encode())
 
         # NOTE: We pass a timestamp to `.validate`, as in case of a timeout
         #       condition we'll have to validate against it
 
         # cryptoconditions makes no assumptions of the encoding of the
         # message to sign or verify. It only accepts bytestrings
-        ffill_valid = parsed_ffill.validate(message=tx_serialized.encode())
+        ffill_valid = parsed_ffill.validate(message=message.digest())
         return output_valid and ffill_valid
 
     def to_dict(self):
@@ -966,21 +1038,15 @@ class Transaction(object):
             Returns:
                 dict: The Transaction as an alternative serialization format.
         """
-        tx = {
+        return {
             'inputs': [input_.to_dict() for input_ in self.inputs],
             'outputs': [output.to_dict() for output in self.outputs],
             'operation': str(self.operation),
             'metadata': self.metadata,
             'asset': self.asset,
             'version': self.version,
+            'id': self._id,
         }
-
-        tx_no_signatures = Transaction._remove_signatures(tx)
-        tx_serialized = Transaction._to_str(tx_no_signatures)
-        tx_id = Transaction._to_hash(tx_serialized)
-
-        tx['id'] = tx_id
-        return tx
 
     @staticmethod
     # TODO: Remove `_dict` prefix of variable.
@@ -1011,7 +1077,7 @@ class Transaction(object):
 
     @property
     def id(self):
-        return self.to_hash()
+        return self._id
 
     def to_hash(self):
         return self.to_dict()['id']
@@ -1070,12 +1136,13 @@ class Transaction(object):
         # NOTE: Remove reference to avoid side effects
         tx_body = deepcopy(tx_body)
         try:
-            proposed_tx_id = tx_body.pop('id')
+            proposed_tx_id = tx_body['id']
         except KeyError:
             raise InvalidHash('No transaction id found!')
 
-        tx_body_no_signatures = Transaction._remove_signatures(tx_body)
-        tx_body_serialized = Transaction._to_str(tx_body_no_signatures)
+        tx_body['id'] = None
+
+        tx_body_serialized = Transaction._to_str(tx_body)
         valid_tx_id = Transaction._to_hash(tx_body_serialized)
 
         if proposed_tx_id != valid_tx_id:
@@ -1093,8 +1160,7 @@ class Transaction(object):
             Returns:
                 :class:`~bigchaindb.common.transaction.Transaction`
         """
-        cls.validate_id(tx)
         inputs = [Input.from_dict(input_) for input_ in tx['inputs']]
         outputs = [Output.from_dict(output) for output in tx['outputs']]
         return cls(tx['operation'], tx['asset'], inputs, outputs,
-                   tx['metadata'], tx['version'])
+                   tx['metadata'], tx['version'], hash_id=tx['id'])

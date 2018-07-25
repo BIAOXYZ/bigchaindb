@@ -13,6 +13,8 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
+import datetime
+
 from recommonmark.parser import CommonMarkParser
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -48,10 +50,9 @@ extensions = [
     'sphinx.ext.todo',
     'sphinx.ext.napoleon',
     'sphinxcontrib.httpdomain',
-    'sphinx.ext.autosectionlabel',
+    'aafigure.sphinxext',
     # Below are actually build steps made to look like sphinx extensions.
     # It was the easiest way to get it running with ReadTheDocs.
-    'generate_schema_documentation',
     'generate_http_server_api_documentation',
 ]
 
@@ -82,7 +83,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'BigchainDB Server'
-copyright = '2017, BigchainDB Contributors'
+now = datetime.datetime.now()
+copyright = str(now.year) + ', BigchainDB Contributors'
 author = 'BigchainDB Contributors'
 
 # The version info for the project you're documenting, acts as replacement for
@@ -306,7 +308,7 @@ man_pages = [
 #  dir menu entry, description, category)
 texinfo_documents = [
     (master_doc, 'bigchaindb-server', 'BigchainDB Server Documentation',
-     author, 'bigchaindb-server', 'A scalable blockchain database.',
+     author, 'bigchaindb-server', 'The blockchain database.',
      'Miscellaneous'),
 ]
 
