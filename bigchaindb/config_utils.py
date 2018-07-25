@@ -128,7 +128,6 @@ def env_config(config):
 
     def load_from_env(value, path):
         var_name = CONFIG_SEP.join([CONFIG_PREFIX] + list(map(lambda s: s.upper(), path)))
-
         return os.environ.get(var_name, value)
 
     return map_leafs(load_from_env, config)
@@ -136,8 +135,7 @@ def env_config(config):
 
 def update_types(config, reference, list_sep=':'):
     """Return a new configuration where all the values types
-    are aligned with the ones in the default configuration
-    """
+    are aligned with the ones in the default configuration"""
 
     def _coerce(current, value):
         # Coerce a value to the `current` type.
@@ -228,8 +226,7 @@ def is_configured():
 
 def autoconfigure(filename=None, config=None, force=False):
     """Run ``file_config`` and ``env_config`` if the module has not
-    been initialized.
-    """
+    been initialized."""
     if not force and is_configured():
         logger.debug('System already configured, skipping autoconfiguration')
         return
@@ -248,8 +245,10 @@ def autoconfigure(filename=None, config=None, force=False):
 
     # override configuration with env variables
     newconfig = env_config(newconfig)
+
     if config:
         newconfig = update(newconfig, config)
+
     set_config(newconfig)  # sets bigchaindb.config
 
 
@@ -288,16 +287,3 @@ def load_consensus_plugin(name=None):
                         'consensus.BaseConsensusRules`'.format(type(plugin)))
 
     return plugin
-
-
-def load_events_plugins(names=None):
-    plugins = []
-
-    if names is None:
-        return plugins
-
-    for name in names:
-        for entry_point in iter_entry_points('bigchaindb.events', name):
-            plugins.append((name, entry_point.load()))
-
-    return plugins

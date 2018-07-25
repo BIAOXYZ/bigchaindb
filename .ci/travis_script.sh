@@ -4,10 +4,14 @@ set -e -x
 
 if [[ -n ${TOXENV} ]]; then
   tox -e ${TOXENV}
-elif [[ ${BIGCHAINDB_CI_ABCI} == 'enable' ]]; then
-  docker-compose exec bigchaindb pytest -v -m abci
-elif [[ ${BIGCHAINDB_ACCEPTANCE_TEST} == 'enable' ]]; then
-    ./run-acceptance-test.sh
+elif [[ "${BIGCHAINDB_DATABASE_BACKEND}" == mongodb && \
+    -z "${BIGCHAINDB_DATABASE_SSL}" ]]; then
+    # Run the full suite of tests for MongoDB over an unsecure connection
+  pytest -sv --database-backend=mongodb --cov=bigchaindb
+elif [[ "${BIGCHAINDB_DATABASE_BACKEND}" == mongodb && \
+    "${BIGCHAINDB_DATABASE_SSL}" == true ]]; then
+    # Run a sub-set of tests over SSL; those marked as 'pytest.mark.bdb_ssl'.
+  pytest -sv --database-backend=mongodb-ssl --cov=bigchaindb -m bdb_ssl
 else
-  docker-compose exec bigchaindb pytest -v --cov=bigchaindb --cov-report xml:htmlcov/coverage.xml
+  pytest -sv -n auto --cov=bigchaindb
 fi

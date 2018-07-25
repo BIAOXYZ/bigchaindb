@@ -1,12 +1,26 @@
 import asyncio
 import json
 import queue
+import random
 import threading
 from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.tendermint
+
+@pytest.fixture
+def _block(b, request):
+    from bigchaindb.models import Transaction
+    total = getattr(request, 'param', 1)
+    transactions = [
+        Transaction.create(
+            [b.me],
+            [([b.me], 1)],
+            metadata={'msg': random.random()},
+        ).sign([b.me_private])
+        for _ in range(total)
+    ]
+    return b.create_block(transactions)
 
 
 class MockWebSocket:
@@ -101,32 +115,27 @@ def test_websocket_string_event(test_client, loop):
 
 
 @asyncio.coroutine
-def test_websocket_block_event(b, test_client, loop):
+@pytest.mark.parametrize('_block', (10,), indirect=('_block',), ids=('block',))
+def test_websocket_block_event(b, _block, test_client, loop):
     from bigchaindb import events
     from bigchaindb.web.websocket_server import init_app, POISON_PILL, EVENTS_ENDPOINT
-    from bigchaindb.models import Transaction
-    from bigchaindb.common import crypto
-
-    user_priv, user_pub = crypto.generate_key_pair()
-    tx = Transaction.create([user_pub], [([user_pub], 1)])
-    tx = tx.sign([user_priv])
 
     event_source = asyncio.Queue(loop=loop)
     app = init_app(event_source, loop=loop)
     client = yield from test_client(app)
     ws = yield from client.ws_connect(EVENTS_ENDPOINT)
-    block = {'height': 1, 'transactions': [tx.to_dict()]}
+    block = _block.to_dict()
     block_event = events.Event(events.EventTypes.BLOCK_VALID, block)
 
     yield from event_source.put(block_event)
 
-    for tx in block['transactions']:
+    for tx in block['block']['transactions']:
         result = yield from ws.receive()
         json_result = json.loads(result.data)
         assert json_result['transaction_id'] == tx['id']
         # Since the transactions are all CREATEs, asset id == transaction id
         assert json_result['asset_id'] == tx['id']
-        assert json_result['height'] == block['height']
+        assert json_result['block_id'] == block['id']
 
     yield from event_source.put(POISON_PILL)
 

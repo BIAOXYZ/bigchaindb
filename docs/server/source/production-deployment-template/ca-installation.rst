@@ -1,5 +1,3 @@
-.. _how-to-set-up-a-self-signed-certificate-authority:
-
 How to Set Up a Self-Signed Certificate Authority
 =================================================
 
@@ -16,18 +14,18 @@ First create a directory for the CA and cd into it:
 
 .. code:: bash
 
-   mkdir bdb-node-ca
+   mkdir bdb-cluster-ca
 
-   cd bdb-node-ca
+   cd bdb-cluster-ca
 
-Then :ref:`install and configure Easy-RSA in that directory <how-to-install-and-configure-easyrsa>`.
+Then :ref:`install and configure Easy-RSA in that directory <How to Install & Configure Easy-RSA>`.
 
 
 Step 2: Create a Self-Signed CA
 -------------------------------
 
 You can create a self-signed CA
-by going to the ``bdb-node-ca/easy-rsa-3.0.1/easyrsa3`` directory and using:
+by going to the ``bdb-cluster-ca/easy-rsa-3.0.1/easyrsa3`` directory and using:
 
 .. code:: bash
         

@@ -11,37 +11,42 @@ cache: pip
 python:
   - 3.5
   - 3.6
-
+  
 env:
-  global:
-    - DOCKER_COMPOSE_VERSION=1.19.0
-  matrix:
-    - TOXENV=flake8
-    - TOXENV=docsroot
-    - TOXENV=docsserver
+  - TOXENV=flake8
+  - TOXENV=docsroot
+  - TOXENV=docsserver
 
 matrix:
   fast_finish: true
   exclude:
   - python: 3.5
-    env: TOXENV=flake8
-  - python: 3.5
+    env: TOXENV=flake8 
+  - python: 3.5 
     env: TOXENV=docsroot
-  - python: 3.5
+  - python: 3.5 
     env: TOXENV=docsserver
   include:
-  - python: 3.6
+  - python: 3.5
+    env: BIGCHAINDB_DATABASE_BACKEND=rethinkdb
+  - python: 3.5
     env:
-    - BIGCHAINDB_DATABASE_BACKEND=localmongodb
+    - BIGCHAINDB_DATABASE_BACKEND=mongodb
     - BIGCHAINDB_DATABASE_SSL=
   - python: 3.6
-    env:
-    - BIGCHAINDB_DATABASE_BACKEND=localmongodb
-    - BIGCHAINDB_DATABASE_SSL=
-    - BIGCHAINDB_CI_ABCI=enable
+    env: BIGCHAINDB_DATABASE_BACKEND=rethinkdb
   - python: 3.6
     env:
-    - BIGCHAINDB_ACCEPTANCE_TEST=enable
+    - BIGCHAINDB_DATABASE_BACKEND=mongodb
+    - BIGCHAINDB_DATABASE_SSL=
+  - python: 3.5
+    env:
+    - BIGCHAINDB_DATABASE_BACKEND=mongodb
+    - BIGCHAINDB_DATABASE_SSL=true
+  - python: 3.6
+    env:
+    - BIGCHAINDB_DATABASE_BACKEND=mongodb
+    - BIGCHAINDB_DATABASE_SSL=true
 
 before_install: sudo .ci/travis-before-install.sh
 

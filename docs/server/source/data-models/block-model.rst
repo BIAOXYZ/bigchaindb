@@ -1,33 +1,36 @@
-.. _the-block-model:
-
 The Block Model
 ===============
 
-A block is a JSON object with a particular schema,
-as outlined in this page.
-A block must contain the following JSON keys
-(also called names or fields):
+A block has the following structure:
 
 .. code-block:: json
 
     {
-      "height": "<Height of the block>",
-      "transactions": ["<List of transactions>"]
+      "id": "<hash of block>",
+      "block": {
+        "timestamp": "<block-creation timestamp>",
+        "transactions": ["<list of transactions>"],
+        "node_pubkey": "<public key of the node creating the block>",
+        "voters": ["<list of public keys of all nodes in the cluster>"]
+      },
+      "signature": "<signature of block>"
     }
 
 
-The JSON Keys in a Block
-------------------------
+- ``id``: The :ref:`hash <Hashes>` of the serialized inner ``block`` (i.e. the ``timestamp``, ``transactions``, ``node_pubkey``, and ``voters``). It's used as a unique index in the database backend (e.g. RethinkDB or MongoDB).
 
-**height**
+- ``block``:
+    - ``timestamp``: The Unix time when the block was created. It's provided by the node that created the block.
+    - ``transactions``: A list of the transactions included in the block.
+    - ``node_pubkey``: The public key of the node that created the block.
+    - ``voters``: A list of the public keys of all cluster nodes at the time the block was created.
+      It's the list of nodes which can cast a vote on this block.
+      This list can change from block to block, as nodes join and leave the cluster.
 
-The block ``"height"`` (``integer``) denotes the height of the blockchain when the given block was committed.
-Since the blockchain height increases monotonically the height of block can be regarded as its id.
-
-**NOTE**: The genesis block has height ``0``
+- ``signature``: :ref:`Cryptographic signature <Signature Algorithm and Keys>` of the block by the node that created the block (i.e. the node with public key ``node_pubkey``). To generate the signature, the node signs the serialized inner ``block`` (the same thing that was hashed to determine the ``id``) using the private key corresponding to ``node_pubkey``.
 
 
-**transactions**
+Working with Blocks
+-------------------
 
-A list of the :ref:`transactions <the-transaction-model>` included in the block.
-(Each transaction is a JSON object.)
+There's a **Block** class for creating and working with Block objects; look in `/bigchaindb/models.py <https://github.com/bigchaindb/bigchaindb/blob/master/bigchaindb/models.py>`_. (The link is to the latest version on the master branch on GitHub.)

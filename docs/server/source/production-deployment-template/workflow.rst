@@ -1,5 +1,3 @@
-.. _kubernetes-template-overview:
-
 Overview
 ========
 
@@ -8,139 +6,126 @@ to set up a production BigchainDB cluster.
 We are constantly improving them.
 You can modify them to suit your needs.
 
-.. _generate-the-blockchain-id-and-genesis-time:
 
-Generate All Shared BigchainDB Setup Parameters
------------------------------------------------
-
-There are some shared BigchainDB setup paramters that every node operator
-in the consortium shares
-because they are properties of the Tendermint cluster.
-They look like this:
-
-.. code::
-
-   # Tendermint data
-   BDB_PERSISTENT_PEERS='bdb-instance-1,bdb-instance-2,bdb-instance-3,bdb-instance-4'
-   BDB_VALIDATORS='bdb-instance-1,bdb-instance-2,bdb-instance-3,bdb-instance-4'
-   BDB_VALIDATOR_POWERS='10,10,10,10'
-   BDB_GENESIS_TIME='0001-01-01T00:00:00Z'
-   BDB_CHAIN_ID='test-chain-rwcPML'
-
-Those paramters only have to be generated once, by one member of the consortium.
-That person will then share the results (Tendermint setup parameters)
-with all the node operators.
-
-The above example parameters are for a cluster of 4 initial (seed) nodes.
-Note how ``BDB_PERSISTENT_PEERS``, ``BDB_VALIDATORS`` and ``BDB_VALIDATOR_POWERS`` are lists
-with 4 items each.
-**If your consortium has a different number of initial nodes,
-then those lists should have that number or items.**
-Use ``10`` for all the power values.
-
-To generate a ``BDB_GENESIS_TIME`` and a ``BDB_CHAIN_ID``,
-you can do this:
-
-.. code::
-
-   $ mkdir $(pwd)/tmdata
-   $ docker run --rm -v $(pwd)/tmdata:/tendermint/config tendermint/tendermint:0.22.3 init
-   $ cat $(pwd)/tmdata/genesis.json
-
-You should see something that looks like:
-
-.. code:: json
-
-   {"genesis_time": "0001-01-01T00:00:00Z",
-    "chain_id": "test-chain-bGX7PM",
-    "validators": [
-        {"pub_key": 
-            {"type": "ed25519",
-             "data": "4669C4B966EB8B99E45E40982B2716A9D3FA53B54C68088DAB2689935D7AF1A9"},
-         "power": 10,
-         "name": ""}
-    ],
-    "app_hash": ""
-   }
-
-The value with ``"genesis_time"`` is ``BDB_GENESIS_TIME`` and
-the value with ``"chain_id"`` is ``BDB_CHAIN_ID``.
-
-Now you have all the BigchainDB setup parameters and can share them
-with all of the node operators. (They will put them in their ``vars`` file.
-We'll say more about that file below.)
+Things the Managing Organization Must Do First
+----------------------------------------------
 
 
-.. _things-each-node-operator-must-do:
+1. Set Up a Self-Signed Certificate Authority
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+We use SSL/TLS and self-signed certificates
+for MongoDB authentication (and message encryption).
+The certificates are signed by the organization managing the cluster.
+If your organization already has a process
+for signing certificates
+(i.e. an internal self-signed certificate authority [CA]),
+then you can skip this step.
+Otherwise, your organization must
+:ref:`set up its own self-signed certificate authority <How to Set Up a Self-Signed Certificate Authority>`.
+
+
+2. Register a Domain and Get an SSL Certificate for It
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The BigchainDB APIs (HTTP API and WebSocket API) should be served using TLS,
+so the organization running the cluster
+should choose an FQDN for their API (e.g. api.organization-x.com),
+register the domain name,
+and buy an SSL/TLS certificate for the FQDN.
+
 
 Things Each Node Operator Must Do
 ---------------------------------
 
-1. Make up an `FQDN <https://en.wikipedia.org/wiki/Fully_qualified_domain_name>`_
-for your BigchainDB node (e.g. ``mynode.mycorp.com``).
-This is where external users will access the BigchainDB HTTP API, for example.
-Make sure you've registered the associated domain name (e.g. ``mycorp.com``).
-
-Get an SSL certificate for your BigchainDB node's FQDN.
-Also get the root CA certificate and all intermediate certificates.
-They should all be provided by your SSL certificate provider.
-Put all those certificates together in one certificate chain file in the following order:
-
-- Domain certificate (i.e. the one you ordered for your FQDN)
-- All intermediate certificates
-- Root CA certificate
-
-DigiCert has `a web page explaining certificate chains <https://www.digicert.com/ssl-support/pem-ssl-creation.htm>`_.
-
-You will put the path to that certificate chain file in the ``vars`` file,
-when you configure your node later.
-
-2a. If your BigchainDB node will use 3scale for API authentication, monitoring and billing,
-you will need all relevant 3scale settings and credentials.
-
-2b. If your BigchainDB node will not use 3scale, then write authorization will be granted
-to all POST requests with a secret token in the HTTP headers.
-(All GET requests are allowed to pass.)
-You can make up that ``SECRET_TOKEN`` now.
-For example, ``superSECRET_token4-POST*requests``.
-You will put it in the ``vars`` file later.
-Every BigchainDB node in a cluster can have a different secret token.
-To make an HTTP POST request to your BigchainDB node,
-you must include an HTTP header named ``X-Secret-Access-Token``
-and set it equal to your secret token, e.g.
-
-``X-Secret-Access-Token: superSECRET_token4-POST*requests``
+☐ Every MongoDB instance in the cluster must have a unique (one-of-a-kind) name.
+Ask the organization managing your cluster if they have a standard
+way of naming instances in the cluster.
+For example, maybe they assign a unique number to each node,
+so that if you're operating node 12, your MongoDB instance would be named
+``mdb-instance-12``.
+Similarly, other instances must also have unique names in the cluster.
+ 
+#. Name of the MongoDB instance (``mdb-instance-*``)
+#. Name of the BigchainDB instance (``bdb-instance-*``)
+#. Name of the NGINX instance (``ngx-http-instance-*`` or ``ngx-https-instance-*``)
+#. Name of the OpenResty instance (``openresty-instance-*``)
+#. Name of the MongoDB monitoring agent instance (``mdb-mon-instance-*``)
+#. Name of the MongoDB backup agent instance (``mdb-bak-instance-*``)
 
 
-3. Deploy a Kubernetes cluster for your BigchainDB node. We have some instructions for how to
-:doc:`Deploy a Kubernetes cluster on Azure <../production-deployment-template/template-kubernetes-azure>`.
+☐ Generate four keys and corresponding certificate signing requests (CSRs):
 
-.. warning::
+#. Server Certificate (a.k.a. Member Certificate) for the MongoDB instance
+#. Client Certificate for BigchainDB Server to identify itself to MongoDB
+#. Client Certificate for MongoDB Monitoring Agent to identify itself to MongoDB
+#. Client Certificate for MongoDB Backup Agent to identify itself to MongoDB
 
-   In theory, you can deploy your BigchainDB node to any Kubernetes cluster, but there can be differences
-   between different Kubernetes clusters, especially if they are running different versions of Kubernetes.
-   We tested this Production Deployment Template on Azure ACS in February 2018 and at that time
-   ACS was deploying a **Kubernetes 1.7.7** cluster. If you can force your cluster to have that version of Kubernetes,
-   then you'll increase the likelihood that everything will work in your cluster.
+Ask the managing organization to use its self-signed CA to sign those four CSRs.
+They should send you:
 
-4. Deploy your BigchainDB node inside your new Kubernetes cluster.
-You will fill up the ``vars`` file,
-then you will run a script which reads that file to generate some Kubernetes config files,
-you will send those config files to your Kubernetes cluster,
-and then you will deploy all the stuff that you need to have a BigchainDB node.
+* Four certificates (one for each CSR you sent them).
+* One ``ca.crt`` file: their CA certificate.
+* One ``crl.pem`` file: a certificate revocation list.
 
-⟶ Proceed to :ref:`deploy your BigchainDB node <kubernetes-template-deploy-a-single-bigchaindb-node>`.
+For help, see the pages:
 
-.. raw:: html
+* :ref:`How to Generate a Server Certificate for MongoDB`
+* :ref:`How to Generate a Client Certificate for MongoDB`
 
-    <br>
-    <br>
-    <br>
-    <br>
-    <br>
-    <br>
-    <br>
-    <br>
-    <br>
-    <br>
-    <br>
+
+☐ Every node in a BigchainDB cluster needs its own
+BigchainDB keypair (i.e. a public key and corresponding private key).
+You can generate a BigchainDB keypair for your node, for example,
+using the `BigchainDB Python Driver <http://docs.bigchaindb.com/projects/py-driver/en/latest/index.html>`_.
+
+.. code:: python
+        
+   from bigchaindb_driver.crypto import generate_keypair
+   print(generate_keypair())
+
+
+☐ Share your BigchaindB *public* key with all the other nodes
+in the BigchainDB cluster.
+Don't share your private key.
+
+
+☐ Get the BigchainDB public keys of all the other nodes in the cluster.
+That list of public keys is known as the BigchainDB "keyring."
+
+
+☐ Make up an FQDN for your BigchainDB node (e.g. ``mynode.mycorp.com``).
+Make sure you've registered the associated domain name (e.g. ``mycorp.com``),
+and have an SSL certificate for the FQDN.
+(You can get an SSL certificate from any SSL certificate provider.)
+
+
+☐ Ask the managing organization
+for the FQDN used to serve the BigchainDB APIs
+(e.g. ``api.orgname.net`` or ``bdb.clustername.com``)
+and for a copy of the associated SSL/TLS certificate.
+Also, ask for the user name to use for authenticating to MongoDB.
+
+
+☐ If the cluster uses 3scale for API authentication, monitoring and billing,
+you must ask the managing organization for all relevant 3scale credentials.
+
+
+☐ If the cluster uses MongoDB Cloud Manager for monitoring and backup,
+you must ask the managing organization for the ``Group ID`` and the
+``Agent API Key``.
+(Each Cloud Manager "group" has its own ``Group ID``. A ``Group ID`` can
+contain a number of ``Agent API Key`` s. It can be found under
+**Settings - Group Settings**. It was recently added to the Cloud Manager to
+allow easier periodic rotation of the ``Agent API Key`` with a constant
+``Group ID``)
+
+
+☐ :doc:`Deploy a Kubernetes cluster on Azure <template-kubernetes-azure>`.
+
+
+☐ You can now proceed to set up your BigchainDB node based on whether it is the
+:ref:`first node in a new cluster
+<Kubernetes Template: Deploy a Single BigchainDB Node>` or a
+:ref:`node that will be added to an existing cluster
+<Kubernetes Template: Add a BigchainDB Node to an Existing BigchainDB Cluster>`.

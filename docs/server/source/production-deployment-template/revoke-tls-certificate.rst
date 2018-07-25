@@ -10,11 +10,11 @@ Step 1: Revoke a Certificate
 ----------------------------
 
 Since we used Easy-RSA version 3 to
-:ref:`set up the CA <how-to-set-up-a-self-signed-certificate-authority>`,
+:ref:`set up the CA <How to Set Up a Self-Signed Certificate Authority>`,
 we use it to revoke certificates too.
 
 Go to the following directory (associated with the self-signed CA):
-``.../bdb-node-ca/easy-rsa-3.0.1/easyrsa3``.
+``.../bdb-cluster-ca/easy-rsa-3.0.1/easyrsa3``.
 You need to be aware of the file name used to import the certificate using the
 ``./easyrsa import-req`` before. Run the following command to revoke a
 certificate:

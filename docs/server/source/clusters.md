@@ -16,8 +16,11 @@ to some extent, on the decentralization of the associated consortium. See the pa
 
 ## Relevant Technical Documentation
 
-Anyone building or managing a BigchainDB cluster may be interested
-in [our production deployment template](production-deployment-template/index.html).
+There are some pages and sections that will be of particular interest to anyone building or managing a BigchainDB cluster. In particular:
+
+* [the page about how to set up and run a cluster node](production-nodes/setup-run-node.html),
+* [our production deployment template](production-deployment-template/index.html), and
+* [our old RethinkDB-based AWS deployment template](appendices/aws-testing-cluster.html).
 
 
 ## Cluster DNS Records and SSL Certificates

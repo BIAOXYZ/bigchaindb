@@ -16,29 +16,9 @@ If you want to generate the HTML version of the long-form documentation on your 
 pip install -r requirements.txt
 ```
 
-If you're building the *Server* docs (in `docs/server`) then you must also do:
-```bash
-pip install -e ../../
-```
-
-Note: Don't put `-e ../../` in the `requirements.txt` file. That will work locally
-but not on ReadTheDocs.
-
 You can then generate the HTML documentation _in that subdirectory_ by doing:
 ```bash
 make html
 ```
 
 It should tell you where the generated documentation (HTML files) can be found. You can view it in your web browser.
-# Building Docs with Docker Compose
-
-You can also use [Docker Compose](https://docs.docker.com/compose/) to build and host docs.
-
-```text
-$ docker-compose up -d bdocs
-```
-
-The docs will be hosted on port **33333**, and can be accessed over [localhost](http:/localhost:33333), [127.0.0.1](http:/127.0.0.1:33333)
-OR http:/HOST_IP:33333.
-
-

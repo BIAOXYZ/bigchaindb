@@ -12,14 +12,14 @@ spec:
       terminationGracePeriodSeconds: 10
       containers:
       - name: nginx-openresty
-        image: bigchaindb/nginx_3scale:2.0.0-alpha
+        image: bigchaindb/nginx_3scale:2.0
         imagePullPolicy: IfNotPresent
         env:
         - name: DNS_SERVER
           valueFrom:
             configMapKeyRef:
               name: vars
-              key: node-dns-server-ip
+              key: cluster-dns-server-ip
         - name: OPENRESTY_FRONTEND_PORT
           valueFrom:
             configMapKeyRef:

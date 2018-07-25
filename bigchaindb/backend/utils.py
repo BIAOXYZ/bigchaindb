@@ -1,7 +1,6 @@
 class ModuleDispatchRegistrationError(Exception):
     """Raised when there is a problem registering dispatched functions for a
-    module
-    """
+    module"""
 
 
 def module_dispatch_registrar(module):

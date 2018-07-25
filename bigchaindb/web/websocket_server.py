@@ -70,15 +70,6 @@ class Dispatcher:
 
         self.subscribers[uuid] = websocket
 
-    def unsubscribe(self, uuid):
-        """Remove a websocket from the list of subscribers.
-
-        Args:
-            uuid (str): a unique identifier for the websocket.
-        """
-
-        del self.subscribers[uuid]
-
     @asyncio.coroutine
     def publish(self):
         """Publish new events to the subscribers."""
@@ -96,9 +87,9 @@ class Dispatcher:
             elif event.type == EventTypes.BLOCK_VALID:
                 block = event.data
 
-                for tx in block['transactions']:
+                for tx in block['block']['transactions']:
                     asset_id = tx['id'] if tx['operation'] == 'CREATE' else tx['asset']['id']
-                    data = {'height': block['height'],
+                    data = {'block_id': block['id'],
                             'asset_id': asset_id,
                             'transaction_id': tx['id']}
                     str_buffer.append(json.dumps(data))
@@ -124,16 +115,11 @@ def websocket_handler(request):
             msg = yield from websocket.receive()
         except RuntimeError as e:
             logger.debug('Websocket exception: %s', str(e))
-            break
-        if msg.type == aiohttp.WSMsgType.CLOSED:
-            logger.debug('Websocket closed')
-            break
-        elif msg.type == aiohttp.WSMsgType.ERROR:
-            logger.debug('Websocket exception: %s', websocket.exception())
-            break
+            return websocket
 
-    request.app['dispatcher'].unsubscribe(uuid)
-    return websocket
+        if msg.type == aiohttp.WSMsgType.ERROR:
+            logger.debug('Websocket exception: %s', websocket.exception())
+            return websocket
 
 
 def init_app(event_source, *, loop=None):

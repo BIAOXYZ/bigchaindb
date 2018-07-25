@@ -1,18 +1,18 @@
-"""API routes definition"""
+""" API routes definition """
 from flask_restful import Api
 from bigchaindb.web.views import (
     assets,
-    metadata,
     blocks,
     info,
+    statuses,
     transactions as tx,
     outputs,
-    validators,
+    votes,
 )
 
 
 def add_routes(app):
-    """Add the routes to an app"""
+    """ Add the routes to an app """
     for (prefix, routes) in API_SECTIONS:
         api = Api(app, prefix=prefix)
         for ((pattern, resource, *args), kwargs) in routes:
@@ -27,13 +27,13 @@ def r(*args, **kwargs):
 ROUTES_API_V1 = [
     r('/', info.ApiV1Index),
     r('assets/', assets.AssetListApi),
-    r('metadata/', metadata.MetadataApi),
-    r('blocks/<int:block_id>', blocks.BlockApi),
+    r('blocks/<string:block_id>', blocks.BlockApi),
     r('blocks/', blocks.BlockListApi),
+    r('statuses/', statuses.StatusApi),
     r('transactions/<string:tx_id>', tx.TransactionApi),
     r('transactions', tx.TransactionListApi),
     r('outputs/', outputs.OutputListApi),
-    r('validators/', validators.ValidatorsApi),
+    r('votes/', votes.VotesApi),
 ]
 
 

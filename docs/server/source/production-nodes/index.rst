@@ -7,4 +7,6 @@ Production Nodes
    node-assumptions
    node-components
    node-requirements
+   setup-run-node
    reverse-proxy-notes
+   

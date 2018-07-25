@@ -3,8 +3,6 @@ import threading
 import queue
 import multiprocessing as mp
 
-import setproctitle
-
 
 class ProcessGroup(object):
 
@@ -26,16 +24,6 @@ class ProcessGroup(object):
                               kwargs=self.kwargs, daemon=self.daemon)
             proc.start()
             self.processes.append(proc)
-
-
-class Process(mp.Process):
-    """Wrapper around multiprocessing.Process that uses
-    setproctitle to set the name of the process when running
-    the target task."""
-
-    def run(self):
-        setproctitle.setproctitle(self.name)
-        super().run()
 
 
 # Inspired by:
@@ -95,7 +83,9 @@ def pool(builder, size, timeout=None):
 
 # TODO: Rename this function, it's handling fulfillments not conditions
 def condition_details_has_owner(condition_details, owner):
-    """Check if the public_key of owner is in the condition details
+    """
+
+    Check if the public_key of owner is in the condition details
     as an Ed25519Fulfillment.public_key
 
     Args:
@@ -121,6 +111,25 @@ def condition_details_has_owner(condition_details, owner):
                 and owner == condition_details['public_key']:
             return True
     return False
+
+
+def is_genesis_block(block):
+    """Check if the block is the genesis block.
+
+    Args:
+        block (dict | Block): the block to check
+
+    Returns:
+        bool: True if the block is the genesis block, False otherwise.
+    """
+
+    # we cannot have empty blocks, there will always be at least one
+    # element in the list so we can safely refer to it
+    # TODO: Remove this try-except and only handle `Block` as input
+    try:
+        return block.transactions[0].operation == 'GENESIS'
+    except AttributeError:
+        return block['block']['transactions'][0]['operation'] == 'GENESIS'
 
 
 class Lazy:

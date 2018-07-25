@@ -25,6 +25,8 @@ systemLog:
       verbosity: 0
     query:
       verbosity: 0
+    replication:
+      verbosity: 0
     sharding:
       verbosity: 0
     storage:
@@ -74,7 +76,7 @@ setParameter:
   authenticationMechanisms: MONGODB-X509,SCRAM-SHA-1
 
 storage:
-  dbPath: /data/db/main
+  dbPath: /data/db
   indexBuildRetry: true
   journal:
     enabled: true
@@ -84,7 +86,6 @@ storage:
   wiredTiger:
     engineConfig:
       journalCompressor: snappy
-      configString: cache_size=STORAGE_ENGINE_CACHE_SIZE
     collectionConfig:
       blockCompressor: snappy
     indexConfig:
@@ -93,3 +94,8 @@ storage:
 operationProfiling:
   mode: slowOp
   slowOpThresholdMs: 100
+
+replication:
+  replSetName: REPLICA_SET_NAME
+  enableMajorityReadConcern: true
+

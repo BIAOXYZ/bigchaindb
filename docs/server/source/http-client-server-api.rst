@@ -1,5 +1,3 @@
-.. _the-http-client-server-api:
-
 The HTTP Client-Server API
 ==========================
 
@@ -28,10 +26,8 @@ with something like the following in the body:
     :language: http
 
 
-.. _api-root-endpoint:
-
 API Root Endpoint
------------------
+-------------------
 
 If you send an HTTP GET request to the API Root Endpoint
 e.g. ``http://localhost:9984/api/v1/``
@@ -44,15 +40,18 @@ that allows you to discover the BigchainDB API endpoints:
 
 
 Transactions
-------------
+-------------------
 
 .. http:get:: /api/v1/transactions/{transaction_id}
 
    Get the transaction with the ID ``transaction_id``.
 
-   If a transaction with ID ``transaction_id`` has been included
-   in a committed block, then this endpoint returns that transaction,
-   otherwise the response will be ``404 Not Found``.
+   This endpoint returns a transaction if it was included in a ``VALID`` block.
+   All instances of a transaction in invalid/undecided blocks or the backlog
+   are ignored and treated as if they don't exist. If a request is made for a
+   transaction and instances of that transaction are found only in
+   invalid/undecided blocks or the backlog, then the response will be ``404 Not
+   Found``.
 
    :param transaction_id: transaction ID
    :type transaction_id: hex string
@@ -74,27 +73,38 @@ Transactions
 
 .. http:get:: /api/v1/transactions
 
-   Requests to the ``/api/v1/transactions`` endpoint
-   without any query parameters will get a response status code ``400 Bad Request``.
+   The unfiltered ``/api/v1/transactions`` endpoint without any query parameters
+   returns a status code `400`. For valid filters, see the sections below.
+
+   There are however filtered requests that might come of use, given the endpoint is
+   queried correctly. Some of them include retrieving a list of transactions
+   that include:
+
+   * `Transactions related to a specific asset <#get--transactions?asset_id=asset_id&operation=CREATE|TRANSFER>`_
+
+   In this section, we've listed those particular requests, as they will likely
+   to be very handy when implementing your application on top of BigchainDB.
+
+   .. note::
+      Looking up transactions with a specific ``metadata`` field is currently not supported,
+      however, providing a way to query based on ``metadata`` data is on our roadmap.
+
+   A generalization of those parameters follows:
+
+   :query string asset_id: The ID of the asset.
+
+   :query string operation: (Optional) One of the two supported operations of a transaction: ``CREATE``, ``TRANSFER``.
 
 .. http:get:: /api/v1/transactions?asset_id={asset_id}&operation={CREATE|TRANSFER}
 
    Get a list of transactions that use an asset with the ID ``asset_id``.
-
-   If ``operation`` is ``CREATE``, then the CREATE transaction which created
-   the asset with ID ``asset_id`` will be returned.
-
-   If ``operation`` is ``TRANSFER``, then every TRANSFER transaction involving
-   the asset with ID ``asset_id`` will be returned.
-   This allows users to query the entire history or
+   Every ``TRANSFER`` transaction that originates from a ``CREATE`` transaction
+   with ``asset_id`` will be included. This allows users to query the entire history or
    provenance of an asset.
 
-   If ``operation`` is not included, then *every* transaction involving
-   the asset with ID ``asset_id`` will be returned.
+   This endpoint returns transactions only if they are decided ``VALID`` by the server.
 
-   This endpoint returns transactions only if they are in committed blocks.
-
-   :query string operation: (Optional) ``CREATE`` or ``TRANSFER``.
+   :query string operation: (Optional) One of the two supported operations of a transaction: ``CREATE``, ``TRANSFER``.
 
    :query string asset_id: asset ID.
 
@@ -114,39 +124,18 @@ Transactions
    :statuscode 400: The request wasn't understood by the server, e.g. the ``asset_id`` querystring was not included in the request.
 
 
-.. http:post:: /api/v1/transactions?mode={mode}
+.. http:post:: /api/v1/transactions
 
-   This endpoint is used to send a transaction to a BigchainDB network.
-   The transaction is put in the body of the request.
-
-   :query string mode: (Optional) One of the three supported modes to send a transaction: ``async``, ``sync``, ``commit``. The default is ``async``.
-
-   The ``mode`` query parameter inhereted from the mode parameter in Tendermint's
-   `broadcast API
-   <http://tendermint.readthedocs.io/projects/tools/en/master/using-tendermint.html#broadcast-api>`_.
-   ``mode=async`` means the HTTP response will come back immediately, without
-   even checking to see if the transaction is valid.
-   ``mode=sync`` means the HTTP response will come back once the node has
-   checked the validity of the transaction.
-   ``mode=commit`` means the HTTP response will come back once the transaction
-   is in a committed block.
+   Push a new transaction.
 
    .. note::
-   
-       The posted transaction should be valid.
-       The relevant
-       `BigchainDB Transactions Spec <https://github.com/bigchaindb/BEPs/tree/master/tx-specs/>`_
-       explains how to build a valid transaction
-       and how to check if a transaction is valid.
+       The posted `transaction
+       <https://docs.bigchaindb.com/projects/server/en/latest/data-models/transaction-model.html>`_
+       should be structurally valid and not spending an already spent output.
+       The steps to build a valid transaction are beyond the scope of this page.
        One would normally use a driver such as the `BigchainDB Python Driver
        <https://docs.bigchaindb.com/projects/py-driver/en/latest/index.html>`_
        to build a valid transaction.
-
-   .. note::
-
-       A client can subscribe to the
-       WebSocket Event Stream API
-       to listen for committed transactions.
 
    **Example request**:
 
@@ -158,18 +147,19 @@ Transactions
    .. literalinclude:: http-samples/post-tx-response.http
       :language: http
 
+   .. note::
+       If the server is returning a ``202`` HTTP status code, then the
+       transaction has been accepted for processing. To check the status of the
+       transaction, poll the link to the
+       :ref:`status monitor <get_status_of_transaction>`
+       provided in the ``Location`` header or listen to server's
+       :ref:`WebSocket Event Stream API <The WebSocket Event Stream API>`.
+
    :resheader Content-Type: ``application/json``
+   :resheader Location: Relative link to a status monitor for the submitted transaction.
 
-   :statuscode 202: The meaning of this response depends on the value
-                    of the ``mode`` parameter. See above. 
-
-   :statuscode 400: The posted transaction was invalid.
-
-
-.. http:post:: /api/v1/transactions
-
-   This endpoint (without any parameters) will push a new transaction.
-   Since no ``mode`` parameter is included, the default mode is assumed: ``async``.
+   :statuscode 202: The pushed transaction was accepted in the ``BACKLOG``, but the processing has not been completed.
+   :statuscode 400: The transaction was malformed and not accepted in the ``BACKLOG``.
 
 
 Transaction Outputs
@@ -191,10 +181,9 @@ unspent outputs.
    :param public_key: Base58 encoded public key associated with output
                       ownership. This parameter is mandatory and without it
                       the endpoint will return a ``400`` response code.
-   :param spent: (Optional) Boolean value (``true`` or ``false``)
-                 indicating if the result set
+   :param spent: Boolean value ("true" or "false") indicating if the result set
                  should include only spent or only unspent outputs. If not
-                 specified, the result includes all the outputs (both spent
+                 specified the result includes all the outputs (both spent
                  and unspent) associated with the ``public_key``.
 
 .. http:get:: /api/v1/outputs?public_key={public_key}
@@ -226,7 +215,7 @@ unspent outputs.
        }
      ]
 
-   :statuscode 200: A list of outputs was found and returned in the body of the response.
+   :statuscode 200: A list of outputs were found and returned in the body of the response.
    :statuscode 400: The request wasn't understood by the server, e.g. the ``public_key`` querystring was not included in the request.
 
 .. http:get:: /api/v1/outputs?public_key={public_key}&spent=true
@@ -286,38 +275,100 @@ unspent outputs.
    :statuscode 400: The request wasn't understood by the server, e.g. the ``public_key`` querystring was not included in the request.
 
 
+Statuses
+--------------------------------
+
+.. http:get:: /api/v1/statuses
+
+   Get the status of an asynchronously written transaction or block by their id.
+
+   :query string transaction_id: transaction ID
+   :query string block_id: block ID
+
+   .. note::
+
+        Exactly one of the ``transaction_id`` or ``block_id`` query parameters must be
+        used together with this endpoint (see below for getting `transaction
+        statuses <#get--statuses?tx_id=tx_id>`_ and `block statuses
+        <#get--statuses?block_id=block_id>`_).
+
+.. _get_status_of_transaction:
+
+.. http:get:: /api/v1/statuses?transaction_id={transaction_id}
+
+    Get the status of a transaction.
+
+    The possible status values are ``undecided``, ``valid`` or ``backlog``.
+    If a transaction in neither of those states is found, a ``404 Not Found``
+    HTTP status code is returned. `We're currently looking into ways to unambigously let the user know about a transaction's status that was included in an invalid block. <https://github.com/bigchaindb/bigchaindb/issues/1039>`_
+
+   **Example request**:
+
+   .. literalinclude:: http-samples/get-statuses-tx-request.http
+      :language: http
+
+   **Example response**:
+
+   .. literalinclude:: http-samples/get-statuses-tx-valid-response.http
+      :language: http
+
+   :resheader Content-Type: ``application/json``
+
+   :statuscode 200: A transaction with that ID was found.
+   :statuscode 404: A transaction with that ID was not found.
+
+
+.. http:get:: /api/v1/statuses?block_id={block_id}
+
+    Get the status of a block.
+
+    The possible status values are ``undecided``, ``valid`` or ``invalid``.
+
+   **Example request**:
+
+   .. literalinclude:: http-samples/get-statuses-block-request.http
+      :language: http
+
+   **Example response**:
+
+   .. literalinclude:: http-samples/get-statuses-block-valid-response.http
+      :language: http
+
+   :resheader Content-Type: ``application/json``
+
+   :statuscode 200: A block with that ID was found.
+   :statuscode 404: A block with that ID was not found.
+
+
 Assets
-------
+--------------------------------
 
 .. http:get:: /api/v1/assets
 
    Return all the assets that match a given text search.
 
-   :query string search: Text search string to query.
+   :query string text search: Text search string to query.
    :query int limit: (Optional) Limit the number of returned assets. Defaults
                      to ``0`` meaning return all matching assets.
 
    .. note::
 
-        Currently this endpoint is only supported if using MongoDB.
+        Currently this enpoint is only supported if the server is running
+        MongoDB as the backend.
 
-.. http:get:: /api/v1/assets?search={search}
+.. http:get:: /api/v1/assets?search={text_search}
 
-    Return all assets that match a given text search.
-    
-    .. note::
-    
-       The ``id`` of the asset
-       is the same ``id`` of the CREATE transaction that created the asset.
+    Return all assets that match a given text search. The ``id`` of the asset
+    is the same ``id`` of the transaction that created the asset.
 
     If no assets match the text search it returns an empty list.
 
     If the text string is empty or the server does not support text search,
-    a ``400 Bad Request`` is returned.
+    a ``400`` is returned.
 
     The results are sorted by text score.
-    For more information about the behavior of text search, see `MongoDB text
-    search behavior <https://docs.mongodb.com/manual/reference/operator/query/text/#behavior>`_.
+    For more information about the behavior of text search see `MongoDB text
+    search behavior <https://docs.mongodb.com/manual/reference/operator/query/text/#behavior>`_
 
    **Example request**:
 
@@ -355,24 +406,24 @@ Assets
                     text string is empty or the server does not support
                     text search.
 
-.. http:get:: /api/v1/assets?search={search}&limit={n_documents}
+.. http:get:: /api/v1/assets?search={text_search}&limit={n_documents}
 
-    Return at most ``n_documents`` assets that match a given text search.
+    Return at most ``n`` assets that match a given text search.
 
     If no assets match the text search it returns an empty list.
 
     If the text string is empty or the server does not support text search,
-    a ``400 Bad Request`` is returned.
+    a ``400`` is returned.
 
     The results are sorted by text score.
-    For more information about the behavior of text search, see `MongoDB text
-    search behavior <https://docs.mongodb.com/manual/reference/operator/query/text/#behavior>`_.
+    For more information about the behavior of text search see `MongoDB text
+    search behavior <https://docs.mongodb.com/manual/reference/operator/query/text/#behavior>`_
 
    **Example request**:
 
    .. sourcecode:: http
 
-    GET /api/v1/assets?search=bigchaindb&limit=2 HTTP/1.1
+    GET /api/v1/assets/?search=bigchaindb&limit=2 HTTP/1.1
     Host: example.com
 
    **Example response**:
@@ -401,180 +452,31 @@ Assets
                     text search.
 
 
-Transaction Metadata
---------------------
-
-.. http:get:: /api/v1/metadata
-
-   Return all the metadata objects that match a given text search.
-
-   :query string search: Text search string to query.
-   :query int limit: (Optional) Limit the number of returned metadata objects. Defaults
-                     to ``0`` meaning return all matching objects.
-
-   .. note::
-
-        Currently this endpoint is only supported if using MongoDB.
-
-.. http:get:: /api/v1/metadata/?search={search}
-
-    Return all metadata objects that match a given text search.
-    
-    .. note::
-
-       The ``id`` of the metadata
-       is the same ``id`` of the transaction where it was defined.
-
-    If no metadata objects match the text search it returns an empty list.
-
-    If the text string is empty or the server does not support text search,
-    a ``400 Bad Request`` is returned.
-
-    The results are sorted by text score.
-    For more information about the behavior of text search, see `MongoDB text
-    search behavior <https://docs.mongodb.com/manual/reference/operator/query/text/#behavior>`_.
-
-   **Example request**:
-
-   .. sourcecode:: http
-
-        GET /api/v1/metadata/?search=bigchaindb HTTP/1.1
-        Host: example.com
-
-   **Example response**:
-
-   .. sourcecode:: http
-
-        HTTP/1.1 200 OK
-        Content-type: application/json
-
-        [
-            {
-                "metadata": {"metakey1": "Hello BigchainDB 1!"},
-                "id": "51ce82a14ca274d43e4992bbce41f6fdeb755f846e48e710a3bbb3b0cf8e4204"
-            },
-            {
-                "metadata": {"metakey2": "Hello BigchainDB 2!"},
-                "id": "b4e9005fa494d20e503d916fa87b74fe61c079afccd6e084260674159795ee31"
-            },
-            {
-                "metadata": {"metakey3": "Hello BigchainDB 3!"},
-                "id": "fa6bcb6a8fdea3dc2a860fcdc0e0c63c9cf5b25da8b02a4db4fb6a2d36d27791"
-            }
-        ]
-
-   :resheader Content-Type: ``application/json``
-
-   :statuscode 200: The query was executed successfully.
-   :statuscode 400: The query was not executed successfully. Returned if the
-                    text string is empty or the server does not support
-                    text search.
-
-.. http:get:: /api/v1/metadata/?search={search}&limit={n_documents}
-
-    Return at most ``n_documents`` metadata objects that match a given text search.
-
-    If no metadata objects match the text search it returns an empty list.
-
-    If the text string is empty or the server does not support text search,
-    a ``400 Bad Request`` is returned.
-
-    The results are sorted by text score.
-    For more information about the behavior of text search, see `MongoDB text
-    search behavior <https://docs.mongodb.com/manual/reference/operator/query/text/#behavior>`_.
-
-   **Example request**:
-
-   .. sourcecode:: http
-
-    GET /api/v1/metadata?search=bigchaindb&limit=2 HTTP/1.1
-    Host: example.com
-
-   **Example response**:
-
-   .. sourcecode:: http
-
-    HTTP/1.1 200 OK
-    Content-type: application/json
-
-    [
-        {
-            "metadata": {"msg": "Hello BigchainDB 1!"},
-            "id": "51ce82a14ca274d43e4992bbce41f6fdeb755f846e48e710a3bbb3b0cf8e4204"
-        },
-        {
-            "metadata": {"msg": "Hello BigchainDB 2!"},
-            "id": "b4e9005fa494d20e503d916fa87b74fe61c079afccd6e084260674159795ee31"
-        },
-    ]
-
-   :resheader Content-Type: ``application/json``
-
-   :statuscode 200: The query was executed successfully.
-   :statuscode 400: The query was not executed successfully. Returned if the
-                    text string is empty or the server does not support
-                    text search.
-
-
-Validators
---------------------
-
-.. http:get:: /api/v1/validators
-
-    Return the local validators set of a given node.
-
-   **Example request**:
-
-   .. sourcecode:: http
-
-    GET /api/v1/validators HTTP/1.1
-    Host: example.com
-
-   **Example response**:
-
-   .. sourcecode:: http
-
-    HTTP/1.1 200 OK
-    Content-type: application/json
-
-    [
-        {
-            "pub_key": {
-                   "data":"4E2685D9016126864733225BE00F005515200727FBAB1312FC78C8B76831255A",
-                   "type":"ed25519"
-            },
-            "power": 10
-        },
-        {
-             "pub_key": {
-                   "data":"608D839D7100466D6BA6BE79C320F8B81DE93CFAA58CF9768CF921C6371F2553",
-                   "type":"ed25519"
-             },
-             "power": 5
-        }
-    ]
-
-
-   :resheader Content-Type: ``application/json``
-
-   :statuscode 200: The query was executed successfully and validators set was returned.
-
-
 Advanced Usage
 --------------------------------
 
-The following endpoints are more advanced
-and meant for debugging and transparency purposes.
+The following endpoints are more advanced and meant for debugging and transparency purposes.
+
+More precisely, the `blocks endpoint <#blocks>`_ allows you to retrieve a block by ``block_id`` as well the list of blocks that
+a certain transaction with ``transaction_id`` occured in (a transaction can occur in multiple ``invalid`` blocks until it
+either gets rejected or validated by the system). This endpoint gives the ability to drill down on the lifecycle of a
+transaction
+
+The `votes endpoint <#votes>`_ contains all the voting information for a specific block. So after retrieving the
+``block_id`` for a given ``transaction_id``, one can now simply inspect the votes that happened at a specific time on that block.
+
 
 Blocks
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. http:get:: /api/v1/blocks/{block_height}
+.. http:get:: /api/v1/blocks/{block_id}
 
-   Get the block with the height ``block_height``.
+   Get the block with the ID ``block_id``. Any blocks, be they ``VALID``, ``UNDECIDED`` or ``INVALID`` will be
+   returned. To check a block's status independently, use the `Statuses endpoint <#status>`_.
+   To check the votes on a block, have a look at the `votes endpoint <#votes>`_.
 
-   :param block_height: block height
-   :type block_height: integer
+   :param block_id: block ID
+   :type block_id: hex string
 
    **Example request**:
 
@@ -589,15 +491,18 @@ Blocks
 
    :resheader Content-Type: ``application/json``
 
-   :statuscode 200: A block with that block height was found.
-   :statuscode 400: The request wasn't understood by the server, e.g. just requesting ``/blocks`` without the ``block_height``.
-   :statuscode 404: A block with that block height was not found.
+   :statuscode 200: A block with that ID was found.
+   :statuscode 400: The request wasn't understood by the server, e.g. just requesting ``/blocks`` without the ``block_id``.
+   :statuscode 404: A block with that ID was not found.
 
 
 .. http:get:: /api/v1/blocks
 
-   The unfiltered ``/blocks`` endpoint without any query parameters
-   returns a ``400 Bad Request`` status code.
+   The unfiltered ``/blocks`` endpoint without any query parameters returns a `400` status code.
+   The list endpoint should be filtered with a ``transaction_id`` query parameter,
+   see the ``/blocks?transaction_id={transaction_id}&status={UNDECIDED|VALID|INVALID}``
+   `endpoint <#get--blocks?tx_id=tx_id&status=UNDECIDED|VALID|INVALID>`_.
+
 
    **Example request**:
 
@@ -612,18 +517,21 @@ Blocks
 
       HTTP/1.1 400 Bad Request
 
-   :statuscode 400: The request wasn't understood by the server, e.g. just requesting ``/blocks`` without the ``block_height``.
+   :statuscode 400: The request wasn't understood by the server, e.g. just requesting ``/blocks`` without the ``block_id``.
 
+.. http:get:: /api/v1/blocks?transaction_id={transaction_id}&status={UNDECIDED|VALID|INVALID}
 
-.. http:get:: /api/v1/blocks?transaction_id={transaction_id}
+   Retrieve a list of ``block_id`` with their corresponding status that contain a transaction with the ID ``transaction_id``.
 
-   Retrieve a list of block IDs (block heights), such that the blocks with those IDs contain a transaction with the ID ``transaction_id``. A correct response may consist of an empty list or a list with one block ID.
+   Any blocks, be they ``UNDECIDED``, ``VALID`` or ``INVALID`` will be
+   returned if no status filter is provided.
 
    .. note::
        In case no block was found, an empty list and an HTTP status code
        ``200 OK`` is returned, as the request was still successful.
 
-   :query string transaction_id: (Required) transaction ID
+   :query string transaction_id: transaction ID *(required)*
+   :query string status: Filter blocks by their status. One of ``VALID``, ``UNDECIDED`` or ``INVALID``.
 
    **Example request**:
 
@@ -637,8 +545,39 @@ Blocks
 
    :resheader Content-Type: ``application/json``
 
-   :statuscode 200: The request was properly formed and zero or more blocks were found containing the specified ``transaction_id``.
+   :statuscode 200: A list of blocks containing a transaction with ID ``transaction_id`` was found and returned.
    :statuscode 400: The request wasn't understood by the server, e.g. just requesting ``/blocks``, without defining ``transaction_id``.
+
+
+Votes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. http:get:: /api/v1/votes?block_id={block_id}
+
+   Retrieve a list of votes for a certain block with ID ``block_id``.
+   To check for the validity of a vote, a user of this endpoint needs to
+   perform the `following steps: <https://github.com/bigchaindb/bigchaindb/blob/8ebd93ed3273e983f5770b1617292aadf9f1462b/bigchaindb/util.py#L119>`_
+
+   1. Check if the vote's ``node_pubkey`` is allowed to vote.
+   2. Verify the vote's signature against the vote's body (``vote.vote``) and ``node_pubkey``.
+
+
+   :query string block_id: The block ID to filter the votes.
+
+   **Example request**:
+
+   .. literalinclude:: http-samples/get-vote-request.http
+      :language: http
+
+   **Example response**:
+
+   .. literalinclude:: http-samples/get-vote-response.http
+      :language: http
+
+   :resheader Content-Type: ``application/json``
+
+   :statuscode 200: A list of votes voting for a block with ID ``block_id`` was found and returned.
+   :statuscode 400: The request wasn't understood by the server, e.g. just requesting ``/votes``, without defining ``block_id``.
 
 
 .. _determining-the-api-root-url:
@@ -656,7 +595,7 @@ so you can access it from the same machine,
 but it won't be directly accessible from the outside world.
 (The outside world could connect via a SOCKS proxy or whatnot.)
 
-The documentation about BigchainDB Server :doc:`Configuration Settings <server-reference/configuration>`
+The documentation about BigchainDB Server :any:`Configuration Settings`
 has a section about how to set ``server.bind`` so as to make
 the HTTP API publicly accessible.
 
@@ -666,7 +605,7 @@ then the public API Root URL is determined as follows:
 - The public IP address (like 12.34.56.78)
   is the public IP address of the machine exposing
   the HTTP API to the public internet (e.g. either the machine hosting
-  Gunicorn or the machine running the reverse proxy such as NGINX).
+  Gunicorn or the machine running the reverse proxy such as Nginx).
   It's determined by AWS, Azure, Rackspace, or whoever is hosting the machine.
 
 - The DNS hostname (like example.com) is determined by DNS records,
@@ -674,7 +613,7 @@ then the public API Root URL is determined as follows:
 
 - The port (like 9984) is determined by the ``server.bind`` setting
   if Gunicorn is exposed directly to the public Internet.
-  If a reverse proxy (like NGINX) is exposed directly to the public Internet
+  If a reverse proxy (like Nginx) is exposed directly to the public Internet
   instead, then it could expose the HTTP API on whatever port it wants to.
   (It should expose the HTTP API on port 9984, but it's not bound to do
   that by anything other than convention.)

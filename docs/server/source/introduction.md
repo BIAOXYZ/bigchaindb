@@ -15,11 +15,19 @@ Note that there are a few kinds of nodes:
 
 ## Setup Instructions for Various Cases
 
-* [Quickstart](quickstart.html)
-* [Set up a local BigchainDB node for development, experimenting and testing](https://docs.bigchaindb.com/projects/contributing/en/latest/dev-setup-coding-and-contribution-process/index.html)
+* [Set up a local stand-alone BigchainDB node for learning and experimenting: Quickstart](quickstart.html)
+* [Set up and run a local dev/test node for developing and testing BigchainDB Server](dev-and-test/setup-run-node.html)
 * [Set up and run a BigchainDB cluster](clusters.html)
+
+There are some old RethinkDB-based deployment instructions as well:
+
+* [Deploy a bare-bones RethinkDB-based node on Azure](appendices/azure-quickstart-template.html)
+* [Deploy a bare-bones RethinkDB-based node on any Ubuntu machine with Ansible](appendices/template-ansible.html)
+* [Deploy a RethinkDB-based testing cluster on AWS](appendices/aws-testing-cluster.html)
+
+Instructions for setting up a client will be provided once there's a public test net.
 
 
 ## Can I Help?
 
-Yes! BigchainDB is an open-source project; we welcome contributions of all kinds. If you want to request a feature, file a bug report, make a pull request, or help in some other way, please see the docs about [Contributing to BigchainDB](https://docs.bigchaindb.com/projects/contributing/en/latest/index.html).
+Yes! BigchainDB is an open-source project; we welcome contributions of all kinds. If you want to request a feature, file a bug report, make a pull request, or help in some other way, please see [the CONTRIBUTING.md file](https://github.com/bigchaindb/bigchaindb/blob/master/CONTRIBUTING.md).

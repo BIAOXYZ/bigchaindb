@@ -32,7 +32,7 @@ as the host (master and agent) operating system.
 You can upgrade Ubuntu and Docker on Azure
 by SSHing into each of the hosts,
 as documented on 
-:ref:`another page <ssh-to-your-new-kubernetes-cluster-nodes>`.
+:ref:`another page <Optional: SSH to Your New Kubernetes Cluster Nodes>`.
 
 In general, you can SSH to each host in your Kubernetes Cluster
 to update the OS and Docker.

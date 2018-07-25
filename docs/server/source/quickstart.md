@@ -1,70 +1,73 @@
 # Quickstart
 
-<style media="screen" type="text/css">
-    .button {
-        border-top: 1px solid #96d1f8;
-        background: #65a9d7;
-        background: -webkit-gradient(linear, left top, left bottom, from(#3e779d), to(#65a9d7));
-        background: -webkit-linear-gradient(top, #3e779d, #65a9d7);
-        background: -moz-linear-gradient(top, #3e779d, #65a9d7);
-        background: -ms-linear-gradient(top, #3e779d, #65a9d7);
-        background: -o-linear-gradient(top, #3e779d, #65a9d7);
-        padding: 8.5px 17px;
-        -webkit-border-radius: 3px;
-        -moz-border-radius: 3px;
-        border-radius: 3px;
-        -webkit-box-shadow: rgba(0,0,0,1) 0 1px 0;
-        -moz-box-shadow: rgba(0,0,0,1) 0 1px 0;
-        box-shadow: rgba(0,0,0,1) 0 1px 0;
-        text-shadow: rgba(0,0,0,.4) 0 1px 0;
-        color: white;
-        font-size: 16px;
-        font-family: Arial, Sans-Serif;
-        text-decoration: none;
-        vertical-align: middle;
-    }
-    .button:hover {
-        border-top-color: #28597a;
-        background: #28597a;
-        color: #ccc;
-    }
-    .button:active {
-        border-top-color: #1b435e;
-        background: #1b435e;
-    }
-    a.button:visited {
-        color: white
-    }
-    .buttondiv {
-        margin-bottom: 1.5em;
-    }
-</style>
+This page has instructions to set up a single stand-alone BigchainDB node for learning or experimenting. Instructions for other cases are [elsewhere](introduction.html). We will assume you're using Ubuntu 16.04 or similar. If you're not using Linux, then you might try [running BigchainDB with Docker](appendices/run-with-docker.html).
 
-## Try BigchainDB
+A. Install MongoDB as the database backend. (There are other options but you can ignore them for now.)
 
-Create a BigchainDB transaction and post it to a BigchainDB network in 20 seconds or less:
+[Install MongoDB Server 3.4+](https://docs.mongodb.com/manual/tutorial/install-mongodb-on-ubuntu/)
 
-<div class="buttondiv">
-    <a class="button" href="https://www.bigchaindb.com/getstarted/">Try BigchainDB Now</a>
-</div>
+B. To run MongoDB with default database path i.e. /data/db, open a Terminal and run the following command:
+```text
+$ sudo mkdir -p /data/db
+```
 
-## Develop an App
+C. Assign rwx(read/write/execute) permissions to the user for default database directory:
+```text
+$ sudo chmod -R 700 /data/db
+```
 
-To develop an app that talks to a BigchainDB network, you'll want a test network to test it against. The BigchainDB Testnet is a free-to-use, publicly-available BigchainDB network that you can test against.
+D. Run MongoDB (but do not close this terminal):
+```text
+$ sudo mongod --replSet=bigchain-rs
+```
 
-<div class="buttondiv">
-    <a class="button" href="https://testnet.bigchaindb.com/">Get started with the BigchainDB Testnet</a>
-</div>
+E. Ubuntu 16.04 already has Python 3.5, so you don't need to install it, but you do need to install some other things within a new terminal:
+```text
+$ sudo apt-get update
+$ sudo apt-get install libffi-dev libssl-dev
+```
 
-Regardless of which BigchainDB network you use, you'll probably use one of the [BigchainDB drivers or tools](https://www.bigchaindb.com/getstarted/#drivers).
+F. Get the latest version of pip and setuptools:
+```text
+$ sudo apt-get install python3-pip
+$ sudo pip3 install --upgrade pip setuptools
+```
 
-## Help Develop BigchainDB Server
+G. Install the `bigchaindb` Python package from PyPI:
+```text
+$ sudo pip3 install bigchaindb
+```
 
-To help develop BigchainDB Server (the core software in each BigchainDB node), see [the docs about contributing to BigchainDB](https://docs.bigchaindb.com/projects/contributing/en/latest/index.html).
+In case you are having problems with installation or package/module versioning, please upgrade the relevant packages on your host by running one the following commands:
+```text
+$ sudo pip3 install [packageName]==[packageVersion]
 
-## Old Quickstart
+OR
 
-If you want something like the old Quickstart page, i.e. some command-line instructions to set up and run a BigchainDB node, then see [the notes on running a local dev node in the docs about contributing to BigchainDB](https://docs.bigchaindb.com/projects/contributing/en/latest/dev-setup-coding-and-contribution-process/index.html).
+$ sudo pip3 install [packageName] --upgrade
+```
+
+H. Configure BigchainDB Server:
+```text
+$ bigchaindb -y configure mongodb
+```
+
+I. Run BigchainDB Server:
+```text
+$ bigchaindb start
+```
+
+J. Verify BigchainDB Server setup by visiting the BigchainDB Root URL in your browser:
+```text
+$ http://127.0.0.1:9984/
+```
+
+A correctly installed installation will show you a JSON object with information about the API, docs, version and your public key.
+
+You now have a running BigchainDB Server and can post transactions to it.
+One way to do that is to use the BigchainDB Python Driver.
+
+[Install the BigchainDB Python Driver (link)](https://docs.bigchaindb.com/projects/py-driver/en/latest/quickstart.html)
 
 <hr>
 

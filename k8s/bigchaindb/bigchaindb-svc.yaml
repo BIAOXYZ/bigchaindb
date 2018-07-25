@@ -7,31 +7,15 @@ metadata:
     name: bdb-instance-0
 spec:
   selector:
-    app: bdb-instance-0-ss
+    app: bdb-instance-0-dep
   ports:
-  - port: 9984
-    targetPort: 9984
+  - port: "<bigchaindb-api-port from ConfigMap>"
+    targetPort: "<bigchaindb-api-port from ConfigMap>"
     name: bdb-api-port
     protocol: TCP
-  - port: 9985
-    targetPort: 9985
+  - port: "<bigchaindb-ws-port from ConfigMap>"
+    targetPort: "<bigchaindb-ws-port from ConfigMap>"
     name: bdb-ws-port
-    protocol: TCP
-  - port: 26658
-    targetPort: 26658
-    name: tm-abci-port
-    protocol: TCP
-  - port: 26656
-    targetPort: 26656
-    name: tm-p2p-port
-    protocol: TCP
-  - port: 26657
-    targetPort: 26657
-    name: tm-rpc-port
-    protocol: TCP
-  - port: 9986
-    targetPort: 9986
-    name: pub-key-access
     protocol: TCP
   type: ClusterIP
   clusterIP: None

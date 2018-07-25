@@ -6,6 +6,7 @@ things (e.g. assets).
 Transactions are the most basic kind of record stored by BigchainDB. There are
 two kinds: CREATE transactions and TRANSFER transactions.
 
+
 ## CREATE Transactions
 
 A CREATE transaction can be used to register, issue, create or otherwise
@@ -27,29 +28,22 @@ and the other output might have 15 oak trees for another set of owners.
 
 Each output also has an associated condition: the condition that must be met
 (by a TRANSFER transaction) to transfer/spend the output.
-BigchainDB supports a variety of conditions.
-For details, see
-the section titled **Transaction Components: Conditions**
-in the relevant
-[BigchainDB Transactions Spec](https://github.com/bigchaindb/BEPs/tree/master/tx-specs/).
-
-![Example BigchainDB CREATE transaction](./_static/CREATE_example.png)
-
-Above we see a diagram of an example BigchainDB CREATE transaction.
-It has one output: Pam owns/controls three shares of the asset
-and there are no other shares (because there are no other outputs).
+BigchainDB supports a variety of conditions,
+a subset of the [Interledger Protocol (ILP)](https://interledger.org/)
+crypto-conditions. For details, see
+[the documentation about Inputs and Outputs](https://docs.bigchaindb.com/projects/server/en/latest/data-models/inputs-outputs.html).
 
 Each output also has a list of all the public keys associated
 with the conditions on that output.
 Loosely speaking, that list might be interpreted as the list of "owners."
 A more accurate word might be fulfillers, signers, controllers,
 or transfer-enablers.
-See the section titled **A Note about Owners**
-in the relevant [BigchainDB Transactions Spec](https://github.com/bigchaindb/BEPs/tree/master/tx-specs/).
+See BigchainDB Server [issue #626](https://github.com/bigchaindb/bigchaindb/issues/626).
 
 A CREATE transaction must be signed by all the owners.
 (If you're looking for that signature,
 it's in the one "fulfillment" of the one input, albeit encoded.)
+
 
 ## TRANSFER Transactions
 
@@ -67,21 +61,6 @@ A TRANSFER transaction can have one or more outputs,
 just like a CREATE transaction (described above).
 The total number of shares coming in on the inputs must equal
 the total number of shares going out on the outputs.
-
-![Example BigchainDB transactions](./_static/CREATE_and_TRANSFER_example.png)
-
-Above we see a diagram of two example BigchainDB transactions,
-a CREATE transaction and a TRANSFER transaction.
-The CREATE transaction is the same as in the earlier diagram.
-The TRANSFER transaction spends Pam's output,
-so the input on that TRANSFER transaction must contain a valid signature
-from Pam (i.e. a valid fulfillment).
-The TRANSFER transaction has two outputs:
-Jim gets one share, and Pam gets the remaining two shares.
-
-Terminology: The "Pam, 3" output is called a "spent transaction output"
-and the "Jim, 1" and "Pam, 2" outputs are called "unspent transaction outputs"
-(UTXOs).
 
 **Example 1:** Suppose a red car is owned and controlled by Joe.
 Suppose the current transfer condition on the car says
@@ -103,6 +82,7 @@ transferred if both Jack and Kelly sign.
 Note how the sum of the incoming paperclips must equal the sum
 of the outgoing paperclips (100).
 
+
 ## Transaction Validity
 
 When a node is asked to check if a transaction is valid, it checks several
@@ -110,7 +90,6 @@ things. We documented those things in a post on *The BigchainDB Blog*:
 ["What is a Valid Transaction in BigchainDB?"](https://blog.bigchaindb.com/what-is-a-valid-transaction-in-bigchaindb-9a1a075a9598)
 (Note: That post was about BigchainDB Server v1.0.0.)
 
-Each [BigchainDB Transactions Spec](https://github.com/bigchaindb/BEPs/tree/master/tx-specs/) documents the conditions for a transaction (of that version) to be valid.
 
 ## Example Transactions
 

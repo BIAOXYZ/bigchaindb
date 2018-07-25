@@ -1,4 +1,5 @@
-"""This module is tests related to schema checking, but _not_ of granular schematic
+"""
+This module is tests related to schema checking, but _not_ of granular schematic
 properties related to validation.
 """
 
@@ -10,9 +11,8 @@ from pytest import raises
 
 from bigchaindb.common.exceptions import SchemaValidationError
 from bigchaindb.common.schema import (
-    TX_SCHEMA_COMMON,
-    validate_transaction_schema,
-)
+    TX_SCHEMA_COMMON, VOTE_SCHEMA, drop_schema_descriptions,
+    validate_transaction_schema, validate_vote_schema)
 
 SUPPORTED_CRYPTOCONDITION_TYPES = ('threshold-sha-256', 'ed25519-sha-256')
 UNSUPPORTED_CRYPTOCONDITION_TYPES = (
@@ -23,7 +23,8 @@ UNSUPPORTED_CRYPTOCONDITION_TYPES = (
 # Test of schema utils
 
 def _test_additionalproperties(node, path=''):
-    """Validate that each object node has additionalProperties set, so that
+    """
+    Validate that each object node has additionalProperties set, so that
     objects with junk keys do not pass as valid.
     """
     if isinstance(node, list):
@@ -39,6 +40,53 @@ def _test_additionalproperties(node, path=''):
 
 def test_transaction_schema_additionalproperties():
     _test_additionalproperties(TX_SCHEMA_COMMON)
+
+
+def test_vote_schema_additionalproperties():
+    _test_additionalproperties(VOTE_SCHEMA)
+
+
+def test_drop_descriptions():
+    node = {
+        'description': 'abc',
+        'properties': {
+            'description': {
+                'description': ('The property named "description" should stay'
+                                'but description meta field goes'),
+            },
+            'properties': {
+                'description': 'this must go'
+            },
+            'any': {
+                'anyOf': [
+                    {
+                        'description': 'must go'
+                    }
+                ]
+            }
+        },
+        'definitions': {
+            'wat': {
+                'description': 'go'
+            }
+        }
+    }
+    expected = {
+        'properties': {
+            'description': {},
+            'properties': {},
+            'any': {
+                'anyOf': [
+                    {}
+                ]
+            }
+        },
+        'definitions': {
+            'wat': {},
+        }
+    }
+    drop_schema_descriptions(node)
+    assert node == expected
 
 
 ################################################################################
@@ -123,3 +171,16 @@ def test_condition_uri_with_unknown_subtype(dummy_transaction, condition_uri):
     dummy_transaction['outputs'][0]['condition']['uri'] = condition_uri
     with raises(SchemaValidationError):
         validate_transaction_schema(dummy_transaction)
+
+
+################################################################################
+# Test call vote schema
+
+
+def test_validate_vote(structurally_valid_vote):
+    validate_vote_schema(structurally_valid_vote)
+
+
+def test_validate_vote_fails():
+    with raises(SchemaValidationError):
+        validate_vote_schema({})

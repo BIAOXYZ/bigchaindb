@@ -13,8 +13,6 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
-import datetime
-
 from recommonmark.parser import CommonMarkParser
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -36,9 +34,7 @@ from recommonmark.parser import CommonMarkParser
 # ones.
 import sphinx_rtd_theme
 
-extensions = [
-    'sphinx.ext.autosectionlabel',
-]
+extensions = []
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -62,8 +58,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = 'BigchainDB'
-now = datetime.datetime.now()
-copyright = str(now.year) + ', BigchainDB Contributors'
+copyright = '2017, BigchainDB Contributors'
 author = 'BigchainDB Contributors'
 
 # The version info for the project you're documenting, acts as replacement for

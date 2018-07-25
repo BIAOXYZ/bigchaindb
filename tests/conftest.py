@@ -1,4 +1,5 @@
-"""Fixtures and setup / teardown functions
+"""
+Fixtures and setup / teardown functions
 
 Tasks:
 1. setup test database before starting the tests
@@ -8,16 +9,12 @@ Tasks:
 import os
 import copy
 import random
-from collections import namedtuple
-from logging import getLogger
-from logging.config import dictConfig
 
 import pytest
-from pymongo import MongoClient
 
+from logging import getLogger
+from logging.config import dictConfig
 from bigchaindb.common import crypto
-from bigchaindb.log import setup_logging
-from bigchaindb.lib import Block
 
 TEST_DB_NAME = 'bigchain_test'
 
@@ -28,21 +25,15 @@ USER_PRIVATE_KEY = '8eJ8q9ZQpReWyQT5aFCiwtZ5wDZC4eDnCen88p3tQ6ie'
 USER_PUBLIC_KEY = 'JEAkEJqLbbgDRAtMm8YAjGp759Aq2qTn9eaEHUj2XePE'
 
 
-def pytest_runtest_setup(item):
-    if isinstance(item, item.Function):
-        backend = item.session.config.getoption('--database-backend')
-        if (item.get_marker('localmongodb') and backend != 'localmongodb'):
-            pytest.skip('Skip tendermint specific tests if not using localmongodb')
-
-
 def pytest_addoption(parser):
     from bigchaindb.backend.connection import BACKENDS
 
+    BACKENDS['mongodb-ssl'] = 'bigchaindb.backend.mongodb.connection.MongoDBConnection'
     backends = ', '.join(BACKENDS.keys())
     parser.addoption(
         '--database-backend',
         action='store',
-        default=os.environ.get('BIGCHAINDB_DATABASE_BACKEND', 'localmongodb'),
+        default=os.environ.get('BIGCHAINDB_DATABASE_BACKEND', 'rethinkdb'),
         help='Defines the backend to use (available: {})'.format(backends),
     )
 
@@ -51,6 +42,7 @@ def pytest_ignore_collect(path, config):
     from bigchaindb.backend.connection import BACKENDS
     path = str(path)
 
+    BACKENDS['mongodb-ssl'] = 'bigchaindb.backend.mongodb.connection.MongoDBConnection'
     supported_backends = BACKENDS.keys()
 
     if os.path.isdir(path):
@@ -63,19 +55,20 @@ def pytest_ignore_collect(path, config):
 def pytest_configure(config):
     config.addinivalue_line(
         'markers',
-        'bdb(): Mark the test as needing BigchainDB.'
-        'BigchainDB will be configured such that the database and tables are available for an '
-        'entire test session.'
-        'You need to run a backend (e.g. MongoDB) '
-        'prior to running tests with this marker. You should not need to restart the backend '
-        'in between tests runs since the test infrastructure flushes the backend upon session end.'
+        'bdb(): Mark the test as needing BigchainDB, i.e. a database with '
+        'the three tables: "backlog", "bigchain", "votes". BigchainDB will '
+        'be configured such that the database and tables are available for an '
+        'entire test session. For distributed tests, the database name will '
+        'be suffixed with the process identifier, e.g.: "bigchain_test_gw0", '
+        'to ensure that each process session has its own separate database.'
     )
     config.addinivalue_line(
         'markers',
-        'abci(): Mark the test as needing a running ABCI server in place. Use this marker'
-        'for tests that require a running Tendermint instance. Note that the test infrastructure'
-        'has no way to reset Tendermint data upon session end - you need to do it manually.'
-        'Setup performed by this marker includes the steps performed by the bdb marker.'
+        'genesis(): Mark the test as needing a genesis block in place. The '
+        'prerequisite steps of configuration and database setup are taken '
+        'care of at session scope (if needed), prior to creating the genesis '
+        'block. The genesis block has function scope: it is destroyed after '
+        'each test function/method.'
     )
 
 
@@ -86,6 +79,12 @@ def _bdb_marker(request):
 
 
 @pytest.fixture(autouse=True)
+def _genesis_marker(request):
+    if request.keywords.get('genesis', None):
+        request.getfixturevalue('_genesis')
+
+
+@pytest.fixture(autouse=True)
 def _restore_config(_configure_bigchaindb):
     from bigchaindb import config, config_utils
     config_before_test = copy.deepcopy(config)
@@ -93,8 +92,29 @@ def _restore_config(_configure_bigchaindb):
     config_utils.set_config(config_before_test)
 
 
+@pytest.fixture
+def _restore_dbs(request):
+    from bigchaindb.backend import connect, schema
+    from bigchaindb.common.exceptions import DatabaseDoesNotExist
+    from .utils import list_dbs
+    conn = connect()
+    dbs_before_test = list_dbs(conn)
+    yield
+    dbs_after_test = list_dbs(conn)
+    dbs_to_delete = (
+        db for db in set(dbs_after_test) - set(dbs_before_test)
+        if TEST_DB_NAME not in db
+    )
+    print(dbs_to_delete)
+    for db in dbs_to_delete:
+        try:
+            schema.drop_database(conn, db)
+        except DatabaseDoesNotExist:
+            pass
+
+
 @pytest.fixture(scope='session')
-def _configure_bigchaindb(request):
+def _configure_bigchaindb(request, certs_dir):
     import bigchaindb
     from bigchaindb import config_utils
     test_db_name = TEST_DB_NAME
@@ -105,20 +125,30 @@ def _configure_bigchaindb(request):
 
     backend = request.config.getoption('--database-backend')
 
+    if backend == 'mongodb-ssl':
+        bigchaindb._database_map[backend] = {
+            # we use mongodb as the backend for mongodb-ssl
+            'backend': 'mongodb',
+            'connection_timeout': 5000,
+            'max_tries': 3,
+            'ssl': True,
+            'ca_cert': os.environ.get('BIGCHAINDB_DATABASE_CA_CERT', certs_dir + '/ca.crt'),
+            'crlfile': os.environ.get('BIGCHAINDB_DATABASE_CRLFILE', certs_dir + '/crl.pem'),
+            'certfile': os.environ.get('BIGCHAINDB_DATABASE_CERTFILE', certs_dir + '/test_bdb_ssl.crt'),
+            'keyfile': os.environ.get('BIGCHAINDB_DATABASE_KEYFILE', certs_dir + '/test_bdb_ssl.key'),
+            'keyfile_passphrase': os.environ.get('BIGCHAINDB_DATABASE_KEYFILE_PASSPHRASE', None)
+        }
+        bigchaindb._database_map[backend].update(bigchaindb._base_database_mongodb)
+
     config = {
         'database': bigchaindb._database_map[backend],
-        'tendermint': {
-            'host': 'localhost',
-            'port': 26657,
+        'keypair': {
+            'private': '31Lb1ZGKTyHnmVK3LUMrAUrPNfd4sE2YyBt3UA4A25aA',
+            'public': '4XYfCbabAWVUCbjTmRTFEu2sc3dFEdkse4r6X498B1s8',
         }
     }
     config['database']['name'] = test_db_name
-    config = config_utils.env_config(config)
     config_utils.set_config(config)
-
-    # NOTE: since we use a custom log level
-    # for benchmark logging we need to setup logging
-    setup_logging()
 
 
 @pytest.fixture(scope='session')
@@ -154,11 +184,32 @@ def _setup_database(_configure_bigchaindb):
 def _bdb(_setup_database, _configure_bigchaindb):
     from bigchaindb import config
     from bigchaindb.backend import connect
-    from .utils import flush_db
+    from bigchaindb.backend.admin import get_config
+    from bigchaindb.backend.schema import TABLES
+    from .utils import flush_db, update_table_config
     conn = connect()
+    # TODO remove condition once the mongodb implementation is done
+    if config['database']['backend'] == 'rethinkdb':
+        table_configs_before = {
+            t: get_config(conn, table=t) for t in TABLES
+        }
     yield
     dbname = config['database']['name']
     flush_db(conn, dbname)
+    # TODO remove condition once the mongodb implementation is done
+    if config['database']['backend'] == 'rethinkdb':
+        for t, c in table_configs_before.items():
+            update_table_config(conn, t, **c)
+
+
+@pytest.fixture
+def _genesis(_bdb, genesis_block):
+    # TODO for precision's sake, delete the block once the test is done. The
+    # deletion is done indirectly via the teardown code of _bdb but explicit
+    # deletion of the block would make things clearer. E.g.:
+    # yield
+    # tests.utils.delete_genesis_block(conn, dbname)
+    pass
 
 
 # We need this function to avoid loading an existing
@@ -252,51 +303,20 @@ def carol_pubkey(carol):
 
 
 @pytest.fixture
-def merlin():
-    from bigchaindb.common.crypto import generate_key_pair
-    return generate_key_pair()
-
-
-@pytest.fixture
-def merlin_privkey(merlin):
-    return merlin.private_key
-
-
-@pytest.fixture
-def merlin_pubkey(merlin):
-    return merlin.public_key
-
-
-@pytest.fixture
 def b():
-    from bigchaindb import BigchainDB
-    return BigchainDB()
+    from bigchaindb import Bigchain
+    return Bigchain()
 
 
 @pytest.fixture
-def tb():
-    from bigchaindb import BigchainDB
-    return BigchainDB()
-
-
-@pytest.fixture
-def create_tx(alice, user_pk):
+def create_tx(b, user_pk):
     from bigchaindb.models import Transaction
-    name = f'I am created by the create_tx fixture. My random identifier is {random.random()}.'
-    return Transaction.create([alice.public_key], [([user_pk], 1)], asset={'name': name})
+    return Transaction.create([b.me], [([user_pk], 1)])
 
 
 @pytest.fixture
-def signed_create_tx(alice, create_tx):
-    return create_tx.sign([alice.private_key])
-
-
-@pytest.mark.abci
-@pytest.fixture
-def posted_create_tx(b, signed_create_tx):
-    res = b.post_transaction(signed_create_tx, 'broadcast_tx_commit')
-    assert res.status_code == 200
-    return signed_create_tx
+def signed_create_tx(b, create_tx):
+    return create_tx.sign([b.me_private])
 
 
 @pytest.fixture
@@ -308,52 +328,71 @@ def signed_transfer_tx(signed_create_tx, user_pk, user_sk):
 
 
 @pytest.fixture
-def double_spend_tx(signed_create_tx, carol_pubkey, user_sk):
-    from bigchaindb.models import Transaction
-    inputs = signed_create_tx.to_inputs()
-    tx = Transaction.transfer(
-        inputs, [([carol_pubkey], 1)], asset_id=signed_create_tx.id)
-    return tx.sign([user_sk])
-
-
-def _get_height(b):
-    maybe_block = b.get_latest_block()
-    return 0 if maybe_block is None else maybe_block['height']
+def structurally_valid_vote():
+    return {
+        'node_pubkey': 'c' * 44,
+        'signature': 'd' * 86,
+        'vote': {
+            'voting_for_block': 'a' * 64,
+            'previous_block': 'b' * 64,
+            'is_block_valid': False,
+            'invalid_reason': None,
+            'timestamp': '1111111111'
+        }
+    }
 
 
 @pytest.fixture
-def inputs(user_pk, b, alice):
+def genesis_block(b):
+    return b.create_genesis_block()
+
+
+@pytest.fixture
+def inputs(user_pk, b, genesis_block):
     from bigchaindb.models import Transaction
+
     # create blocks with transactions for `USER` to spend
+    prev_block_id = genesis_block.id
     for block in range(4):
         transactions = [
             Transaction.create(
-                [alice_pubkey(alice)],
+                [b.me],
                 [([user_pk], 1)],
                 metadata={'msg': random.random()},
-            ).sign([alice_privkey(alice)]).to_dict()
+            ).sign([b.me_private])
             for _ in range(10)
         ]
-        block = Block(app_hash='', height=_get_height(b), transactions=transactions)
-        b.store_block(block._asdict())
+        block = b.create_block(transactions)
+        b.write_block(block)
+
+        # vote the blocks valid, so that the inputs are valid
+        vote = b.vote(block.id, prev_block_id, True)
+        prev_block_id = block.id
+        b.write_vote(vote)
 
 
 @pytest.fixture
-def inputs_shared(user_pk, user2_pk, alice):
+def inputs_shared(user_pk, user2_pk, genesis_block):
     from bigchaindb.models import Transaction
 
     # create blocks with transactions for `USER` to spend
+    prev_block_id = genesis_block.id
     for block in range(4):
         transactions = [
             Transaction.create(
-                [alice.public_key],
+                [b.me],
                 [user_pk, user2_pk],
                 metadata={'msg': random.random()},
-            ).sign([alice.private_key]).to_dict()
+            ).sign([b.me_private])
             for _ in range(10)
         ]
-        block = Block(app_hash='', height=_get_height(b), transaction=transactions)
-        b.store_block(block._asdict())
+        block = b.create_block(transactions)
+        b.write_block(block)
+
+        # vote the blocks valid, so that the inputs are valid
+        vote = b.vote(block.id, prev_block_id, True)
+        prev_block_id = block.id
+        b.write_vote(vote)
 
 
 @pytest.fixture
@@ -426,45 +465,6 @@ def db_conn():
 
 
 @pytest.fixture
-def db_context(db_config, db_host, db_port, db_name, db_conn):
-    DBContext = namedtuple(
-        'DBContext', ('config', 'host', 'port', 'name', 'conn'))
-    return DBContext(
-        config=db_config,
-        host=db_host,
-        port=db_port,
-        name=db_name,
-        conn=db_conn,
-    )
-
-
-@pytest.fixture
-def tendermint_host():
-    return os.getenv('BIGCHAINDB_TENDERMINT_HOST', 'localhost')
-
-
-@pytest.fixture
-def tendermint_port():
-    return int(os.getenv('BIGCHAINDB_TENDERMINT_PORT', 26657))
-
-
-@pytest.fixture
-def tendermint_ws_url(tendermint_host, tendermint_port):
-    return 'ws://{}:{}/websocket'.format(tendermint_host, tendermint_port)
-
-
-@pytest.fixture
-def tendermint_context(tendermint_host, tendermint_port, tendermint_ws_url):
-    TendermintContext = namedtuple(
-        'TendermintContext', ('host', 'port', 'ws_url'))
-    return TendermintContext(
-        host=tendermint_host,
-        port=tendermint_port,
-        ws_url=tendermint_ws_url,
-    )
-
-
-@pytest.fixture
 def mocked_setup_pub_logger(mocker):
     return mocker.patch(
         'bigchaindb.log.setup.setup_pub_logger', autospec=True, spec_set=True)
@@ -476,51 +476,10 @@ def mocked_setup_sub_logger(mocker):
         'bigchaindb.log.setup.setup_sub_logger', autospec=True, spec_set=True)
 
 
-@pytest.fixture(autouse=True)
-def _abci_http(request):
-    if request.keywords.get('abci', None):
-        request.getfixturevalue('abci_http')
-
-
-@pytest.fixture
-def abci_http(_setup_database, _configure_bigchaindb, abci_server,
-              tendermint_host, tendermint_port):
-    import requests
-    import time
-
-    for i in range(300):
-        try:
-            uri = 'http://{}:{}/abci_info'.format(tendermint_host, tendermint_port)
-            requests.get(uri)
-            return True
-
-        except requests.exceptions.RequestException as e:
-            pass
-        time.sleep(1)
-
-    return False
-
-
-@pytest.yield_fixture(scope='session')
-def event_loop(request):
-    import asyncio
-
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.mark.bdb
 @pytest.fixture(scope='session')
-def abci_server():
-    from abci import ABCIServer
-    from bigchaindb.core import App
-    from bigchaindb.utils import Process
-
-    app = ABCIServer(app=App())
-    abci_proxy = Process(name='ABCI', target=app.run)
-    yield abci_proxy.start()
-    abci_proxy.terminate()
+def certs_dir():
+    cwd = os.environ.get('TRAVIS_BUILD_DIR', os.getcwd())
+    return cwd + '/tests/backend/mongodb-ssl/certs'
 
 
 @pytest.fixture
@@ -531,17 +490,17 @@ def wsserver_config():
 
 @pytest.fixture
 def wsserver_scheme(wsserver_config):
-    return wsserver_config['advertised_scheme']
+    return wsserver_config['scheme']
 
 
 @pytest.fixture
 def wsserver_host(wsserver_config):
-    return wsserver_config['advertised_host']
+    return wsserver_config['host']
 
 
 @pytest.fixture
 def wsserver_port(wsserver_config):
-    return wsserver_config['advertised_port']
+    return wsserver_config['port']
 
 
 @pytest.fixture
@@ -550,68 +509,9 @@ def wsserver_base_url(wsserver_scheme, wsserver_host, wsserver_port):
 
 
 @pytest.fixture
-def unspent_output_0():
-    return {
-        'amount': 1,
-        'asset_id': 'e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d',
-        'condition_uri': 'ni:///sha-256;RmovleG60-7K0CX60jjfUunV3lBpUOkiQOAnBzghm0w?fpt=ed25519-sha-256&cost=131072',
-        'fulfillment_message': '{"asset":{"data":{"hash":"06e47bcf9084f7ecfd2a2a2ad275444a"}},"id":"e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d","inputs":[{"fulfillment":"pGSAIIQT0Jm6LDlcSs9coJK4Q4W-SNtsO2EtMtQJ04EUjBMJgUAXKIqeaippbF-IClhhZNNaP6EIZ_OgrVQYU4mH6b-Vc3Tg-k6p-rJOlLGUUo_w8C5QgPHNRYFOqUk2f1q0Cs4G","fulfills":null,"owners_before":["9taLkHkaBXeSF8vrhDGFTAmcZuCEPqjQrKadfYGs4gHv"]}],"metadata":null,"operation":"CREATE","outputs":[{"amount":"1","condition":{"details":{"public_key":"6FDGsHrR9RZqNaEm7kBvqtxRkrvuWogBW2Uy7BkWc5Tz","type":"ed25519-sha-256"},"uri":"ni:///sha-256;RmovleG60-7K0CX60jjfUunV3lBpUOkiQOAnBzghm0w?fpt=ed25519-sha-256&cost=131072"},"public_keys":["6FDGsHrR9RZqNaEm7kBvqtxRkrvuWogBW2Uy7BkWc5Tz"]},{"amount":"2","condition":{"details":{"public_key":"AH9D7xgmhyLmVE944zvHvuvYWuj5DfbMBJhnDM4A5FdT","type":"ed25519-sha-256"},"uri":"ni:///sha-256;-HlYmgwwl-vXwE52IaADhvYxaL1TbjqfJ-LGn5a1PFc?fpt=ed25519-sha-256&cost=131072"},"public_keys":["AH9D7xgmhyLmVE944zvHvuvYWuj5DfbMBJhnDM4A5FdT"]},{"amount":"3","condition":{"details":{"public_key":"HpmSVrojHvfCXQbmoAs4v6Aq1oZiZsZDnjr68KiVtPbB","type":"ed25519-sha-256"},"uri":"ni:///sha-256;xfn8pvQkTCPtvR0trpHy2pqkkNTmMBCjWMMOHtk3WO4?fpt=ed25519-sha-256&cost=131072"},"public_keys":["HpmSVrojHvfCXQbmoAs4v6Aq1oZiZsZDnjr68KiVtPbB"]}],"version":"1.0"}',   # noqa
-        'output_index': 0,
-        'transaction_id': 'e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d'
-    }
-
-
-@pytest.fixture
-def unspent_output_1():
-    return {
-        'amount': 2,
-        'asset_id': 'e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d',
-        'condition_uri': 'ni:///sha-256;-HlYmgwwl-vXwE52IaADhvYxaL1TbjqfJ-LGn5a1PFc?fpt=ed25519-sha-256&cost=131072',
-        'fulfillment_message': '{"asset":{"data":{"hash":"06e47bcf9084f7ecfd2a2a2ad275444a"}},"id":"e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d","inputs":[{"fulfillment":"pGSAIIQT0Jm6LDlcSs9coJK4Q4W-SNtsO2EtMtQJ04EUjBMJgUAXKIqeaippbF-IClhhZNNaP6EIZ_OgrVQYU4mH6b-Vc3Tg-k6p-rJOlLGUUo_w8C5QgPHNRYFOqUk2f1q0Cs4G","fulfills":null,"owners_before":["9taLkHkaBXeSF8vrhDGFTAmcZuCEPqjQrKadfYGs4gHv"]}],"metadata":null,"operation":"CREATE","outputs":[{"amount":"1","condition":{"details":{"public_key":"6FDGsHrR9RZqNaEm7kBvqtxRkrvuWogBW2Uy7BkWc5Tz","type":"ed25519-sha-256"},"uri":"ni:///sha-256;RmovleG60-7K0CX60jjfUunV3lBpUOkiQOAnBzghm0w?fpt=ed25519-sha-256&cost=131072"},"public_keys":["6FDGsHrR9RZqNaEm7kBvqtxRkrvuWogBW2Uy7BkWc5Tz"]},{"amount":"2","condition":{"details":{"public_key":"AH9D7xgmhyLmVE944zvHvuvYWuj5DfbMBJhnDM4A5FdT","type":"ed25519-sha-256"},"uri":"ni:///sha-256;-HlYmgwwl-vXwE52IaADhvYxaL1TbjqfJ-LGn5a1PFc?fpt=ed25519-sha-256&cost=131072"},"public_keys":["AH9D7xgmhyLmVE944zvHvuvYWuj5DfbMBJhnDM4A5FdT"]},{"amount":"3","condition":{"details":{"public_key":"HpmSVrojHvfCXQbmoAs4v6Aq1oZiZsZDnjr68KiVtPbB","type":"ed25519-sha-256"},"uri":"ni:///sha-256;xfn8pvQkTCPtvR0trpHy2pqkkNTmMBCjWMMOHtk3WO4?fpt=ed25519-sha-256&cost=131072"},"public_keys":["HpmSVrojHvfCXQbmoAs4v6Aq1oZiZsZDnjr68KiVtPbB"]}],"version":"1.0"}',   # noqa
-        'output_index': 1,
-        'transaction_id': 'e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d',
-    }
-
-
-@pytest.fixture
-def unspent_output_2():
-    return {
-        'amount': 3,
-        'asset_id': 'e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d',
-        'condition_uri': 'ni:///sha-256;xfn8pvQkTCPtvR0trpHy2pqkkNTmMBCjWMMOHtk3WO4?fpt=ed25519-sha-256&cost=131072',
-        'fulfillment_message': '{"asset":{"data":{"hash":"06e47bcf9084f7ecfd2a2a2ad275444a"}},"id":"e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d","inputs":[{"fulfillment":"pGSAIIQT0Jm6LDlcSs9coJK4Q4W-SNtsO2EtMtQJ04EUjBMJgUAXKIqeaippbF-IClhhZNNaP6EIZ_OgrVQYU4mH6b-Vc3Tg-k6p-rJOlLGUUo_w8C5QgPHNRYFOqUk2f1q0Cs4G","fulfills":null,"owners_before":["9taLkHkaBXeSF8vrhDGFTAmcZuCEPqjQrKadfYGs4gHv"]}],"metadata":null,"operation":"CREATE","outputs":[{"amount":"1","condition":{"details":{"public_key":"6FDGsHrR9RZqNaEm7kBvqtxRkrvuWogBW2Uy7BkWc5Tz","type":"ed25519-sha-256"},"uri":"ni:///sha-256;RmovleG60-7K0CX60jjfUunV3lBpUOkiQOAnBzghm0w?fpt=ed25519-sha-256&cost=131072"},"public_keys":["6FDGsHrR9RZqNaEm7kBvqtxRkrvuWogBW2Uy7BkWc5Tz"]},{"amount":"2","condition":{"details":{"public_key":"AH9D7xgmhyLmVE944zvHvuvYWuj5DfbMBJhnDM4A5FdT","type":"ed25519-sha-256"},"uri":"ni:///sha-256;-HlYmgwwl-vXwE52IaADhvYxaL1TbjqfJ-LGn5a1PFc?fpt=ed25519-sha-256&cost=131072"},"public_keys":["AH9D7xgmhyLmVE944zvHvuvYWuj5DfbMBJhnDM4A5FdT"]},{"amount":"3","condition":{"details":{"public_key":"HpmSVrojHvfCXQbmoAs4v6Aq1oZiZsZDnjr68KiVtPbB","type":"ed25519-sha-256"},"uri":"ni:///sha-256;xfn8pvQkTCPtvR0trpHy2pqkkNTmMBCjWMMOHtk3WO4?fpt=ed25519-sha-256&cost=131072"},"public_keys":["HpmSVrojHvfCXQbmoAs4v6Aq1oZiZsZDnjr68KiVtPbB"]}],"version":"1.0"}',   # noqa
-        'output_index': 2,
-        'transaction_id': 'e897c7a0426461a02b4fca8ed73bc0debed7570cf3b40fb4f49c963434225a4d',
-    }
-
-
-@pytest.fixture
-def unspent_outputs(unspent_output_0, unspent_output_1, unspent_output_2):
-    return unspent_output_0, unspent_output_1, unspent_output_2
-
-
-@pytest.fixture
-def mongo_client(db_context):
-    return MongoClient(host=db_context.host, port=db_context.port)
-
-
-@pytest.fixture
-def utxo_collection(db_context, mongo_client):
-    return mongo_client[db_context.name].utxos
-
-
-@pytest.fixture
-def dummy_unspent_outputs():
-    return [
-        {'transaction_id': 'a', 'output_index': 0},
-        {'transaction_id': 'a', 'output_index': 1},
-        {'transaction_id': 'b', 'output_index': 0},
-    ]
-
-
-@pytest.fixture
-def utxoset(dummy_unspent_outputs, utxo_collection):
-    res = utxo_collection.insert_many(copy.deepcopy(dummy_unspent_outputs))
-    assert res.acknowledged
-    assert len(res.inserted_ids) == 3
-    return dummy_unspent_outputs, utxo_collection
+def genesis_tx(b, user_pk):
+    from bigchaindb.models import Transaction
+    tx = Transaction.create([b.me], [([user_pk], 1)])
+    tx.operation = Transaction.GENESIS
+    genesis_tx = tx.sign([b.me_private])
+    return genesis_tx

@@ -1,5 +1,3 @@
-.. _how-to-install-and-configure-easyrsa:
-
 How to Install & Configure Easy-RSA
 ===================================
 

@@ -35,7 +35,9 @@ def mock_generate_key_pair(monkeypatch):
 @pytest.fixture
 def mock_bigchaindb_backup_config(monkeypatch):
     config = {
+        'keypair': {},
         'database': {'host': 'host', 'port': 12345, 'name': 'adbname'},
+        'backlog_reassign_delay': 5
     }
     monkeypatch.setattr('bigchaindb._config', config)
 
@@ -45,7 +47,8 @@ def run_start_args(request):
     param = getattr(request, 'param', {})
     return Namespace(
         config=param.get('config'),
-        skip_initialize_database=param.get('skip_initialize_database', False),
+        start_rethinkdb=param.get('start_rethinkdb', False),
+        allow_temp_keypair=param.get('allow_temp_keypair', False),
     )
 
 

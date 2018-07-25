@@ -55,12 +55,6 @@ class TransactionListApi(Resource):
         Return:
             A ``dict`` containing the data about the transaction.
         """
-        parser = reqparse.RequestParser()
-        parser.add_argument('mode', type=parameters.valid_mode,
-                            default='broadcast_tx_async')
-        args = parser.parse_args()
-        mode = str(args['mode'])
-
         pool = current_app.config['bigchain_pool']
 
         # `force` will try to format the body of the POST request even if the
@@ -82,6 +76,7 @@ class TransactionListApi(Resource):
             )
 
         with pool() as bigchain:
+            bigchain.statsd.incr('web.tx.post')
             try:
                 bigchain.validate_transaction(tx_obj)
             except ValidationError as e:
@@ -90,11 +85,18 @@ class TransactionListApi(Resource):
                     'Invalid transaction ({}): {}'.format(type(e).__name__, e)
                 )
             else:
-                status_code, message = bigchain.write_transaction(tx_obj, mode)
+                bigchain.write_transaction(tx_obj)
 
-        if status_code == 202:
-            response = jsonify(tx)
-            response.status_code = 202
-            return response
-        else:
-            return make_error(status_code, message)
+        response = jsonify(tx)
+        response.status_code = 202
+
+        # NOTE: According to W3C, sending a relative URI is not allowed in the
+        # Location Header:
+        #   - https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
+        #
+        # Flask is autocorrecting relative URIs. With the following command,
+        # we're able to prevent this.
+        response.autocorrect_location_header = False
+        status_monitor = '../statuses?transaction_id={}'.format(tx_obj.id)
+        response.headers['Location'] = status_monitor
+        return response

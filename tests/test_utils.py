@@ -3,8 +3,6 @@ from unittest.mock import patch, call
 
 import pytest
 
-pytestmark = pytest.mark.tendermint
-
 
 @pytest.fixture
 def mock_queue(monkeypatch):
@@ -135,12 +133,18 @@ def test_process_group_instantiates_and_start_processes(mock_process):
         process.start.assert_called_with()
 
 
+def test_is_genesis_block_returns_true_if_genesis(b):
+    from bigchaindb.utils import is_genesis_block
+    genesis_block = b.prepare_genesis_block()
+    assert is_genesis_block(genesis_block)
+
+
 def test_lazy_execution():
     from bigchaindb.utils import Lazy
 
-    lz = Lazy()
-    lz.split(',')[1].split(' ').pop(1).strip()
-    result = lz.run('Like humans, cats tend to favor one paw over another')
+    l = Lazy()
+    l.split(',')[1].split(' ').pop(1).strip()
+    result = l.run('Like humans, cats tend to favor one paw over another')
     assert result == 'cats'
 
     class Cat:
@@ -149,22 +153,7 @@ def test_lazy_execution():
 
     cat = Cat('Shmui')
 
-    lz = Lazy()
-    lz.name.upper()
-    result = lz.run(cat)
+    l = Lazy()
+    l.name.upper()
+    result = l.run(cat)
     assert result == 'SHMUI'
-
-
-def test_process_set_title():
-    from uuid import uuid4
-    from multiprocessing import Queue
-    from setproctitle import getproctitle
-    from bigchaindb.utils import Process
-
-    queue = Queue()
-    uuid = str(uuid4())
-
-    process = Process(target=lambda: queue.put(getproctitle()),
-                      name=uuid)
-    process.start()
-    assert queue.get() == uuid

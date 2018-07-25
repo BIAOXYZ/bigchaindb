@@ -4,9 +4,6 @@ from types import ModuleType
 import pytest
 
 
-pytestmark = pytest.mark.tendermint
-
-
 @pytest.fixture
 def mock_module():
     return ModuleType('mock_module')
